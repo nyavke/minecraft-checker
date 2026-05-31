@@ -4,17 +4,25 @@
 #  Просто запусти: ./run.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
-set -e
-
 RED='\033[91m'; YELLOW='\033[93m'; GREEN='\033[92m'
 CYAN='\033[96m'; BOLD='\033[1m'; RESET='\033[0m'; DIM='\033[2m'
 
 REMOTE_DIR="/tmp/mc-checker"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPORT_LOCAL="/tmp/mc_report_$(date +%Y%m%d_%H%M%S).html"
-SSH_SOCKET="/tmp/mc_ssh_ctl_$$"
+REPORT_LOCAL="${TEMP:-/tmp}/mc_report_$(date +%Y%m%d_%H%M%S).html"
+TEMP_KEY="${TEMP:-/tmp}/mc_tmp_key_$$"
 
-cleanup() { ssh -o ControlPath="$SSH_SOCKET" -O exit "$SSH_TARGET" 2>/dev/null; rm -f "$SSH_SOCKET"; }
+# Удаляем временный ключ при выходе
+cleanup() {
+    if [[ -n "$SSH_TARGET" && -f "$TEMP_KEY" ]]; then
+        # Удаляем ключ с удалённой машины
+        KEY_COMMENT=$(awk '{print $3}' "${TEMP_KEY}.pub" 2>/dev/null)
+        ssh -i "$TEMP_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes \
+            "$SSH_TARGET" \
+            "sed -i '/mc_tmp/d' ~/.ssh/authorized_keys 2>/dev/null" 2>/dev/null || true
+    fi
+    rm -f "$TEMP_KEY" "${TEMP_KEY}.pub"
+}
 trap cleanup EXIT
 
 # ─── Шапка ───────────────────────────────────────────────────────────────────
@@ -28,54 +36,58 @@ echo -e "${RESET}"
 echo -e "  Введи данные игрока:\n"
 read -rp "  IP-адрес:   " PLAYER_IP
 read -rp "  Юзернейм:  " PLAYER_USER
-echo ""
+
+# Убираем \r (Git Bash на Windows добавляет их в конец read)
+PLAYER_IP="${PLAYER_IP//$'\r'/}"
+PLAYER_IP="${PLAYER_IP// /}"
+PLAYER_USER="${PLAYER_USER//$'\r'/}"
+PLAYER_USER="${PLAYER_USER// /}"
 
 SSH_TARGET="${PLAYER_USER}@${PLAYER_IP}"
 
+echo ""
 echo -e "  Цель:    ${BOLD}${SSH_TARGET}${RESET}"
 echo -e "  Отчёт:   ${BOLD}${REPORT_LOCAL}${RESET}"
 echo ""
 
-# Общие опции SSH — ControlMaster держит соединение открытым
-# Пароль спрашивается ОДИН РАЗ при первом подключении
-SSH_OPTS=(
-    -o "ControlMaster=auto"
-    -o "ControlPath=$SSH_SOCKET"
-    -o "ControlPersist=300"
-    -o "StrictHostKeyChecking=no"
-    -o "ConnectTimeout=10"
-)
-SCP_OPTS=(
-    -o "ControlPath=$SSH_SOCKET"
-    -o "StrictHostKeyChecking=no"
-)
+SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes)
 
-_ssh()  { ssh  "${SSH_OPTS[@]}" "$SSH_TARGET" "$@"; }
-_ssht() { ssh  "${SSH_OPTS[@]}" -t "$SSH_TARGET" "$@"; }
-_scp()  { scp  "${SCP_OPTS[@]}" "$@"; }
+# ─── Генерируем временный SSH-ключ ───────────────────────────────────────────
+echo -e "  ${DIM}Создаю временный SSH-ключ...${RESET}"
+ssh-keygen -t ed25519 -f "$TEMP_KEY" -N "" -C "mc_tmp" -q
 
-# ─── 1. Подключение (здесь спросит пароль — только один раз) ─────────────────
-echo -e "  ${YELLOW}[1/4]${RESET} Подключение... ${DIM}(введи пароль SSH)${RESET}"
-if ! _ssh "echo ok" > /dev/null; then
-    echo -e "  ${RED}[!]${RESET} Не удалось подключиться. Проверь IP и пароль."
-    exit 1
-fi
-echo -e "  ${GREEN}[OK]${RESET} Соединение установлено"
+# ─── Копируем ключ на удалённую машину (здесь спросит пароль — ОДИН РАЗ) ─────
+echo -e "  ${YELLOW}[1/4]${RESET} Подключение ${DIM}(введи пароль SSH — больше не понадобится)${RESET}"
+echo ""
+
+# Копируем pub-ключ вручную (работает везде без ssh-copy-id)
+PUB_KEY=$(cat "${TEMP_KEY}.pub")
+ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+    "$SSH_TARGET" \
+    "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+
+echo ""
+echo -e "  ${GREEN}[OK]${RESET} Подключение установлено"
+
+# Теперь все команды через ключ — пароль больше не нужен
+_ssh()  { ssh  "${SSH_OPTS[@]}" -i "$TEMP_KEY" "$SSH_TARGET" "$@"; }
+_ssht() { ssh  "${SSH_OPTS[@]}" -i "$TEMP_KEY" -t "$SSH_TARGET" "$@"; }
+_scp()  { scp  -o StrictHostKeyChecking=no -i "$TEMP_KEY" "$@"; }
 
 # ─── 2. Установка Python3 и binutils ─────────────────────────────────────────
 echo -e "  ${YELLOW}[2/4]${RESET} Проверка Python3 и binutils..."
 _ssh bash << 'ENDSSH'
 install_pkg() {
-    if   command -v pacman  &>/dev/null; then pacman -Sy --noconfirm "$1" 2>/dev/null
-    elif command -v apt-get &>/dev/null; then apt-get install -y -q "$2" 2>/dev/null
-    elif command -v dnf     &>/dev/null; then dnf install -y "$2" 2>/dev/null
+    if   command -v pacman  &>/dev/null; then sudo pacman -Sy --noconfirm "$1" 2>/dev/null
+    elif command -v apt-get &>/dev/null; then sudo apt-get install -y -q "$2" 2>/dev/null
+    elif command -v dnf     &>/dev/null; then sudo dnf install -y "$2" 2>/dev/null
     fi
 }
 command -v python3 &>/dev/null || install_pkg python python3
 command -v strings &>/dev/null || install_pkg binutils binutils
-python3 --version
+python3 --version 2>&1
 ENDSSH
-echo -e "  ${GREEN}[OK]${RESET} Зависимости установлены"
+echo -e "  ${GREEN}[OK]${RESET} Зависимости в порядке"
 
 # ─── 3. Копирование сканера ───────────────────────────────────────────────────
 echo -e "  ${YELLOW}[3/4]${RESET} Копирую сканер..."
@@ -100,13 +112,12 @@ _scp "${SSH_TARGET}:/tmp/mc_report.html" "$REPORT_LOCAL"
 echo -e "  ${GREEN}[OK]${RESET} Отчёт: ${BOLD}${REPORT_LOCAL}${RESET}"
 echo -e "  ${CYAN}Открываю в браузере...${RESET}\n"
 
-if   command -v xdg-open &>/dev/null; then xdg-open "$REPORT_LOCAL" &
-elif command -v open     &>/dev/null; then open "$REPORT_LOCAL"
-elif command -v wslview  &>/dev/null; then wslview "$REPORT_LOCAL"
+if   command -v xdg-open &>/dev/null; then xdg-open  "$REPORT_LOCAL" &
+elif command -v open     &>/dev/null; then open       "$REPORT_LOCAL"
+elif command -v wslview  &>/dev/null; then wslview    "$REPORT_LOCAL"
 elif [[ -n "$WSL_DISTRO_NAME"      ]]; then cmd.exe /C "start $(wslpath -w "$REPORT_LOCAL")"
-elif [[ "$OSTYPE" == "msys"        ]]; then start "$REPORT_LOCAL" 2>/dev/null || cmd //C "start $(cygpath -w "$REPORT_LOCAL")"
-else
-    echo -e "  ${YELLOW}Открой файл вручную:${RESET} ${REPORT_LOCAL}"
+elif [[ "$OSTYPE" == "msys"        ]]; then cmd //C "start $(cygpath -w "$REPORT_LOCAL")"
+else echo -e "  ${YELLOW}Открой вручную:${RESET} ${REPORT_LOCAL}"
 fi
 
 echo -e "  ${GREEN}${BOLD}Готово!${RESET}\n"
