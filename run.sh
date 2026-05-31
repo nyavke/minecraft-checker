@@ -9,7 +9,7 @@ CYAN='\033[96m'; BOLD='\033[1m'; RESET='\033[0m'; DIM='\033[2m'
 
 REMOTE_DIR="/tmp/mc-checker"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPORT_LOCAL="${TEMP:-/tmp}/mc_report_$(date +%Y%m%d_%H%M%S).html"
+REPORT_LOCAL=""  # будет задан после ввода юзернейма
 TEMP_KEY="${TEMP:-/tmp}/mc_tmp_key_$$"
 
 # Удаляем временный ключ при выходе
@@ -44,6 +44,7 @@ PLAYER_USER="${PLAYER_USER//$'\r'/}"
 PLAYER_USER="${PLAYER_USER// /}"
 
 SSH_TARGET="${PLAYER_USER}@${PLAYER_IP}"
+REPORT_LOCAL="${TEMP:-/tmp}/mc_report_${PLAYER_USER}_$(date +%Y%m%d_%H%M%S).html"
 
 echo ""
 echo -e "  Цель:    ${BOLD}${SSH_TARGET}${RESET}"
@@ -62,9 +63,18 @@ echo ""
 
 # Копируем pub-ключ вручную (работает везде без ssh-copy-id)
 PUB_KEY=$(cat "${TEMP_KEY}.pub")
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-    "$SSH_TARGET" \
-    "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+        "$SSH_TARGET" \
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"; then
+    echo ""
+    echo -e "  ${RED}[!] Не удалось подключиться к ${SSH_TARGET}${RESET}"
+    echo -e "  ${YELLOW}Возможные причины:${RESET}"
+    echo -e "     • SSH не запущен на машине игрока"
+    echo -e "       ${DIM}Исправление: sudo service ssh start  (или sudo systemctl start sshd)${RESET}"
+    echo -e "     • Неверный IP или пароль"
+    echo -e "     • Порт 22 заблокирован файрволом"
+    exit 1
+fi
 
 echo ""
 echo -e "  ${GREEN}[OK]${RESET} Подключение установлено"
