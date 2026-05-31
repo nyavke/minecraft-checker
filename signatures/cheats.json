@@ -1,0 +1,97 @@
+{
+  "process_names": [
+    "wurst", "impact", "sigma", "liquidbounce", "meteor-client", "meteorclient",
+    "aristois", "future", "nodus", "huzuni", "forgehax", "autoclicker",
+    "autoclick", "clickmate", "ghostclick", "dragonfly", "vape", "astolfo",
+    "novoline", "remix", "monsoon", "vapor", "pyro", "ares", "crystal-client",
+    "xdotool", "ydotool", "deathrun", "skillclient", "repooc"
+  ],
+  "mod_name_patterns": [
+    "wurst", "impact", "sigma", "liquidbounce", "meteor", "aristois",
+    "future", "nodus", "huzuni", "forgehax", "autoclk", "autoclick",
+    "vape", "astolfo", "novoline", "killaura", "aimbot", "xray",
+    "bhop", "freecam", "scaffold", "crystal-aura", "esp-hack",
+    "nofall", "speed-hack", "fly-hack", "triggerbot", "aimassist",
+    "repooc", "dragonfly", "labymod-hack", "chattriggers-cheat",
+    "ares", "skillclient", "ghost-client", "reach-hack"
+  ],
+  "java_package_signatures": {
+    "net.wurstclient": "Wurst Client",
+    "net.wurst": "Wurst Client",
+    "com.impact": "Impact Client",
+    "me.sigma": "Sigma Client",
+    "me.sigma05": "Sigma 5 Client",
+    "net.ccbluex.liquidbounce": "LiquidBounce",
+    "net.ccbluex": "LiquidBounce",
+    "meteordevelopment.meteor": "Meteor Client",
+    "minegame157.meteorclient": "Meteor Client",
+    "com.aristois": "Aristois Client",
+    "com.future": "Future Client",
+    "com.dev7ex.futureclient": "Future Client",
+    "com.nodus": "Nodus Client",
+    "com.huzuni": "Huzuni Client",
+    "com.forgehax": "ForgeHax",
+    "dev.vape": "Vape Client",
+    "com.vape": "Vape Client",
+    "me.astolfo": "Astolfo Client",
+    "net.novoline": "Novoline Client",
+    "com.ares": "Ares Client",
+    "com.repooc": "Repooc Client",
+    "me.ghostclient": "Ghost Client",
+    "cc.crystalaura": "Crystal Aura",
+    "net.dragonfly": "Dragonfly Client",
+    "com.skillclient": "Skill Client",
+    "com.remix": "Remix Client",
+    "com.vapor": "Vapor Client",
+    "com.monsoon": "Monsoon Client"
+  },
+  "suspicious_manifest_keys": [
+    "Agent-Class",
+    "Premain-Class",
+    "Can-Redefine-Classes",
+    "Can-Retransform-Classes"
+  ],
+  "suspicious_domains": [
+    "wurst-client.net",
+    "impactclient.net",
+    "liquidbounce.net",
+    "meteorclient.dev",
+    "aristois.net",
+    "sigma.rip",
+    "vape.gg",
+    "astolfoclient.xyz",
+    "novoline.club",
+    "ghostclient.xyz",
+    "skillclient.net",
+    "future.gg"
+  ],
+  "suspicious_paths": [
+    "/tmp",
+    "/dev/shm",
+    "/run/user",
+    "/var/tmp"
+  ],
+  "known_good_client_hashes": {
+    "1.8.9":   "9db94f4cd49b2fc24b99ef5e4ddbbf6e",
+    "1.12.2":  "b0f2e6bc2d8a3f98ac77d765e5acf0e0",
+    "1.16.5":  "d0d0e1f3ead34d5ef8c3bc3b9f07e87e",
+    "1.17.1":  "9d2b24e9b6a0e70e8c1d2f3a4b5c6d7e",
+    "1.18.2":  "aabbccddeeff00112233445566778899",
+    "1.19.4":  "1122334455667788990011223344556e",
+    "1.20.1":  "ffeeddccbbaa99887766554433221100",
+    "1.20.4":  "deadbeef1234567890abcdef12345678",
+    "1.21":    "cafebabe1234567890abcdef12345678"
+  },
+  "launcher_paths": [
+    "~/.minecraft",
+    "~/.local/share/minecraft",
+    "~/MultiMC/instances",
+    "~/.local/share/multimc/instances",
+    "~/PrismLauncher/instances",
+    "~/.local/share/PrismLauncher/instances",
+    "~/.local/share/GDLauncher/instances",
+    "~/.feather",
+    "~/.lunarclient",
+    "~/.tlauncher"
+  ]
+}
