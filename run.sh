@@ -9,6 +9,8 @@ CYAN='\033[96m'; BOLD='\033[1m'; RESET='\033[0m'; DIM='\033[2m'
 
 REMOTE_DIR="/tmp/mc-checker"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPORT_DIR="/c/Users/admin/Desktop/Check"
+mkdir -p "$REPORT_DIR"
 REPORT_LOCAL=""  # будет задан после ввода юзернейма
 TEMP_KEY="${TEMP:-/tmp}/mc_tmp_key_$$"
 
@@ -44,7 +46,7 @@ PLAYER_USER="${PLAYER_USER//$'\r'/}"
 PLAYER_USER="${PLAYER_USER// /}"
 
 SSH_TARGET="${PLAYER_USER}@${PLAYER_IP}"
-REPORT_LOCAL="${TEMP:-/tmp}/mc_report_${PLAYER_USER}_$(date +%Y%m%d_%H%M%S).html"
+REPORT_LOCAL="${REPORT_DIR}/mc_report_${PLAYER_USER}_$(date +%Y%m%d_%H%M%S).html"
 
 echo ""
 echo -e "  Цель:    ${BOLD}${SSH_TARGET}${RESET}"
