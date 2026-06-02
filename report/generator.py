@@ -40,7 +40,7 @@ class ReportGenerator:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Minecraft Cheat Report — {self.username}</title>
+<title>PT Check Report — {self.username}</title>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   :root {{
@@ -178,7 +178,7 @@ class ReportGenerator:
 </head>
 <body>
 <div class="header">
-  <h1>&#128269; Minecraft Cheat Detector</h1>
+  <h1>&#128269; PT Check</h1>
   <div class="meta">
     <span>&#128100; Пользователь: <b>{self.username}</b></span>
     <span>&#128337; Время проверки: <b>{self.scan_time}</b></span>
@@ -193,7 +193,7 @@ class ReportGenerator:
   {sections_html}
 </div>
 
-<footer>Minecraft Cheat Detector &mdash; отчёт сгенерирован {self.scan_time}</footer>
+<footer>PT Check &mdash; отчёт сгенерирован {self.scan_time}</footer>
 
 <script>
   document.querySelectorAll('.section-header').forEach(function(header) {{

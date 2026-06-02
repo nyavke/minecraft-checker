@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """
-Minecraft Cheat Detector — Linux Edition
-Запуск: sudo python3 scan.py --user <username>
+PT Check — Windows Edition
+Запуск: python scan.py [--user <username>]
+Рекомендуется запуск от имени администратора.
 """
 
 import os
 import sys
+
+# Принудительно UTF-8 для вывода в Windows-терминале
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+import ctypes
 import argparse
-import http.server
+import webbrowser
 import threading
+import http.server
 from pathlib import Path
 from datetime import datetime
 
-# Добавляем корневую папку в путь
 sys.path.insert(0, str(Path(__file__).parent))
 
 from detectors.processes    import ProcessScanner
@@ -22,6 +31,9 @@ from detectors.network      import NetworkScanner
 from detectors.filesystem   import FilesystemScanner
 from detectors.integrity    import IntegrityChecker
 from detectors.strings_scan import StringsScanner
+from detectors.artifacts         import ArtifactsScanner
+from detectors.shellbag          import ShellBagScanner
+from detectors.executedprograms  import ExecutedProgramsScanner
 from report.generator       import ReportGenerator
 
 RESET  = '\033[0m'
@@ -40,43 +52,87 @@ RISK_COLORS = {
 }
 
 
+def _enable_ansi():
+    """Включить ANSI escape-коды в Windows 10+ терминале."""
+    try:
+        kernel32 = ctypes.windll.kernel32
+        # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+    except Exception:
+        pass
+
+
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
+
+
+def elevate_and_restart():
+    """
+    Перезапустить скрипт с правами администратора через UAC.
+    Возвращает True если UAC-запрос был показан (пользователь нажал Да или Нет).
+    """
+    script = str(Path(__file__).resolve())
+    # Пробрасываем все аргументы командной строки в поднятый процесс
+    extra = ' '.join(f'"{a}"' for a in sys.argv[1:])
+    params = f'"{script}" {extra}'.strip()
+    ret = ctypes.windll.shell32.ShellExecuteW(
+        None,           # hwnd
+        "runas",        # verb — вызывает UAC
+        sys.executable, # python.exe
+        params,         # аргументы
+        None,           # рабочая директория
+        1,              # SW_SHOWNORMAL
+    )
+    return int(ret) > 32  # >32 = успех
+
+
 def banner():
     print(f"""{CYAN}{BOLD}
-  ███╗   ███╗ ██████╗    ██████╗██╗  ██╗███████╗ ██████╗██╗  ██╗
-  ████╗ ████║██╔════╝   ██╔════╝██║  ██║██╔════╝██╔════╝██║ ██╔╝
-  ██╔████╔██║██║        ██║     ███████║█████╗  ██║     █████╔╝
-  ██║╚██╔╝██║██║        ██║     ██╔══██║██╔══╝  ██║     ██╔═██╗
-  ██║ ╚═╝ ██║╚██████╗   ╚██████╗██║  ██║███████╗╚██████╗██║  ██╗
-  ╚═╝     ╚═╝ ╚═════╝    ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝
-{RESET}{DIM}  Minecraft Cheat Detector — Linux Edition{RESET}
+  ██████╗ ████████╗    ██████╗██╗  ██╗███████╗ ██████╗██╗  ██╗
+  ██╔══██╗╚══██╔══╝   ██╔════╝██║  ██║██╔════╝██╔════╝██║ ██╔╝
+  ██████╔╝   ██║      ██║     ███████║█████╗  ██║     █████╔╝
+  ██╔═══╝    ██║      ██║     ██╔══██║██╔══╝  ██║     ██╔═██╗
+  ██║        ██║      ╚██████╗██║  ██║███████╗╚██████╗██║  ██╗
+  ╚═╝        ╚═╝       ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝
+{RESET}{DIM}  PT Check — Windows Edition{RESET}
 """)
 
 
 def parse_args():
+    current_user = os.environ.get('USERNAME', '')
+    temp_dir = os.environ.get('TEMP', os.environ.get('TMP', '.'))
+    default_output = str(Path(temp_dir) / 'pt_report.html')
+
     parser = argparse.ArgumentParser(
-        description='Minecraft Cheat Detector — сканирует систему Linux на читы',
+        description='PT Check — сканирует Windows на читы Minecraft',
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         '--user', '-u',
-        required=True,
-        help='Имя пользователя для проверки (например: player1)'
+        default=current_user,
+        help=f'Имя пользователя Windows (по умолчанию: {current_user})'
     )
     parser.add_argument(
         '--output', '-o',
-        default='/tmp/mc_report.html',
-        help='Путь для сохранения HTML-отчёта (по умолчанию: /tmp/mc_report.html)'
+        default=default_output,
+        help=f'Путь для сохранения HTML-отчёта (по умолчанию: {default_output})'
     )
     parser.add_argument(
         '--port', '-p',
         type=int,
         default=8888,
-        help='Порт HTTP-сервера для просмотра отчёта (по умолчанию: 8888)'
+        help='Порт HTTP-сервера (по умолчанию: 8888)'
     )
     parser.add_argument(
         '--no-serve',
         action='store_true',
-        help='Не запускать HTTP-сервер после сканирования'
+        help='Открыть файл напрямую, без HTTP-сервера'
     )
     return parser.parse_args()
 
@@ -87,7 +143,12 @@ def run_scanner(label, scanner_cls, username):
         result = scanner_cls(username).scan()
         risk = result.get('risk', 'unknown')
         color = RISK_COLORS.get(risk, DIM)
-        label_map = {'clean': 'ЧИСТО', 'suspicious': 'ПОДОЗРИТЕЛЬНО', 'danger': 'ОПАСНОСТЬ', 'unknown': 'НЕИЗВЕСТНО'}
+        label_map = {
+            'clean':      'ЧИСТО',
+            'suspicious': 'ПОДОЗРИТЕЛЬНО',
+            'danger':     'ОПАСНОСТЬ',
+            'unknown':    'НЕИЗВЕСТНО',
+        }
         print(f'\r  {color}[{label_map.get(risk, risk.upper())}]{RESET} {label}')
         return result
     except Exception as e:
@@ -106,22 +167,22 @@ def serve_report(output_path, port):
             pass
 
     try:
-        server = http.server.HTTPServer(('0.0.0.0', port), SilentHandler)
+        server = http.server.HTTPServer(('127.0.0.1', port), SilentHandler)
     except OSError as e:
         print(f'\n{RED}[!] Не удалось запустить сервер на порту {port}: {e}{RESET}')
-        print(f'    Откройте отчёт вручную: {output_path}')
+        print(f'    Открываю файл напрямую...')
+        webbrowser.open(Path(output_path).as_uri())
         return
 
+    url = f'http://localhost:{port}/{report_file}'
     print(f'\n{CYAN}{"─"*55}{RESET}')
-    print(f'{BOLD}  Сервер отчёта запущен{RESET}')
+    print(f'{BOLD}  Отчёт готов!{RESET}')
     print(f'{CYAN}{"─"*55}{RESET}')
-    print(f'  Порт:   {BOLD}{port}{RESET}')
-    print(f'  Файл:   {output_path}')
-    print()
-    print(f'  {YELLOW}Для просмотра в браузере выполните на своей машине:{RESET}')
-    print(f'  {BOLD}ssh -L {port}:localhost:{port} user@<IP>{RESET}')
-    print(f'  Затем откройте: {CYAN}http://localhost:{port}/{report_file}{RESET}')
+    print(f'  Адрес: {BOLD}{url}{RESET}')
+    print(f'  Файл:  {output_path}')
     print(f'\n  {DIM}Ctrl+C — остановить сервер{RESET}\n')
+
+    threading.Timer(0.6, lambda: webbrowser.open(url)).start()
 
     try:
         server.serve_forever()
@@ -130,48 +191,62 @@ def serve_report(output_path, port):
 
 
 def main():
+    _enable_ansi()
     args = parse_args()
 
-    if os.geteuid() != 0:
-        print(f'{YELLOW}[!] Предупреждение: запуск без root. Часть проверок (ptrace, /proc/maps других процессов) будет ограничена.{RESET}')
-        print(f'    Рекомендуется: {BOLD}sudo python3 scan.py --user {args.user}{RESET}\n')
+    if not is_admin():
+        print(f'{YELLOW}[*] Запрос прав администратора (UAC)...{RESET}')
+        if elevate_and_restart():
+            # Успешно запустили повышенный процесс — выходим из текущего
+            sys.exit(0)
+        else:
+            # Пользователь отклонил UAC — продолжаем без прав
+            print(f'{YELLOW}[!] UAC отклонён. Часть проверок (Prefetch, BAM, память) будет ограничена.{RESET}\n')
 
     banner()
 
-    print(f'{BOLD}  Цель:{RESET} {args.user}')
+    print(f'{BOLD}  Пользователь:{RESET} {args.user}')
     print(f'{BOLD}  Время:{RESET} {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     print(f'\n{CYAN}{"─"*55}{RESET}')
     print(f'  Запуск сканеров...\n')
 
     scanners = [
-        ('Сканер процессов',              ProcessScanner),
-        ('Сканер модов (JAR)',             ModScanner),
-        ('Сканер native-библиотек (.so)', NativeScanner),
-        ('Сканер сети',                   NetworkScanner),
-        ('Сканер файловой системы',       FilesystemScanner),
-        ('Проверка целостности клиента',  IntegrityChecker),
-        ('Сканер строк (strings)',        StringsScanner),
+        ('Сканер процессов',                   ProcessScanner),
+        ('Сканер модов (JAR)',                  ModScanner),
+        ('Сканер native-библиотек (DLL)',        NativeScanner),
+        ('Сканер сети',                         NetworkScanner),
+        ('Сканер файловой системы',             FilesystemScanner),
+        ('Проверка целостности клиента',        IntegrityChecker),
+        ('Сканер строк',                        StringsScanner),
+        ('Forensic-артефакты (удалённые файлы)', ArtifactsScanner),
+        ('ShellBag (история папок)',             ShellBagScanner),
+        ('ExecutedPrograms (история запусков)',   ExecutedProgramsScanner),
     ]
 
     results = {}
-    key_map = ['processes', 'mods', 'native', 'network', 'filesystem', 'integrity', 'strings']
+    key_map = [
+        'processes', 'mods', 'native', 'network', 'filesystem',
+        'integrity', 'strings', 'artifacts', 'shellbag', 'executedprograms',
+    ]
 
     for i, (label, cls) in enumerate(scanners):
-        key = key_map[i]
-        results[key] = run_scanner(label, cls, args.user)
+        results[key_map[i]] = run_scanner(label, cls, args.user)
 
-    # Итоговый риск
     order = {'clean': 0, 'suspicious': 1, 'danger': 2, 'unknown': -1}
     overall = max(results.values(), key=lambda d: order.get(d.get('risk', 'unknown'), -1))
     overall_risk = overall.get('risk', 'unknown')
     risk_color = RISK_COLORS.get(overall_risk, DIM)
-    risk_names = {'clean': 'ЧИСТО', 'suspicious': 'ПОДОЗРИТЕЛЬНО', 'danger': 'ОПАСНОСТЬ', 'unknown': 'НЕИЗВЕСТНО'}
+    risk_names = {
+        'clean':      'ЧИСТО',
+        'suspicious': 'ПОДОЗРИТЕЛЬНО',
+        'danger':     'ОПАСНОСТЬ',
+        'unknown':    'НЕИЗВЕСТНО',
+    }
 
     print(f'\n{CYAN}{"─"*55}{RESET}')
     print(f'  Итоговый результат: {risk_color}{BOLD}{risk_names.get(overall_risk, overall_risk)}{RESET}')
     print(f'{CYAN}{"─"*55}{RESET}\n')
 
-    # Генерация отчёта
     print(f'  Генерация HTML-отчёта...', end='', flush=True)
     try:
         gen  = ReportGenerator(results, args.user)
@@ -182,10 +257,10 @@ def main():
         print(f'\r  {RED}[!]{RESET} Ошибка генерации отчёта: {e}')
         sys.exit(1)
 
-    if not args.no_serve:
-        serve_report(args.output, args.port)
+    if args.no_serve:
+        webbrowser.open(Path(args.output).as_uri())
     else:
-        print(f'\n  Откройте файл в браузере: {args.output}')
+        serve_report(args.output, args.port)
 
 
 if __name__ == '__main__':

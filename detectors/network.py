@@ -1,31 +1,41 @@
-import re
 import json
 import subprocess
 from pathlib import Path
 
+try:
+    import psutil
+    PSUTIL_OK = True
+except ImportError:
+    PSUTIL_OK = False
+
 with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
     SIGS = json.load(f)
+
+# Порты отладки JVM (JDWP)
+JDWP_PORTS = {5005, 8000, 9009}
 
 
 class NetworkScanner:
     """
     Проверяет сетевые соединения Java-процессов:
-    подключения к известным серверам читов, подозрительные порты.
+    подключения к известным серверам читов, отладочные порты JVM.
     """
+
     def __init__(self, username):
         self.username = username
         self.findings = []
         self.risk = 'clean'
 
     def scan(self):
-        connections = self._get_connections()
-        if connections is not None:
-            self._analyze_connections(connections)
+        if PSUTIL_OK:
+            self._scan_via_psutil()
+        else:
+            self._scan_via_netstat()
         return {
             'name': 'Сканер сети',
-            'description': 'Активные соединения Java-процессов, подключения к известным серверам читов',
+            'description': 'Активные соединения Java-процессов, подключения к серверам читов, JDWP',
             'findings': self.findings,
-            'risk': self.risk
+            'risk': self.risk,
         }
 
     def _set_risk(self, level):
@@ -33,91 +43,144 @@ class NetworkScanner:
         if order.get(level, 0) > order.get(self.risk, 0):
             self.risk = level
 
-    def _get_connections(self):
+    # ─── psutil-путь ──────────────────────────────────────────────────────────
+
+    def _scan_via_psutil(self):
+        import psutil
+
+        # Собираем PID всех Java-процессов целевого пользователя
+        java_pids = set()
+        for proc in psutil.process_iter(['pid', 'name', 'username']):
+            try:
+                if 'java' not in (proc.info['name'] or '').lower():
+                    continue
+                win_user = (proc.info.get('username') or '')
+                if '\\' in win_user:
+                    win_user = win_user.split('\\')[-1]
+                if self.username and self.username.lower() != win_user.lower():
+                    continue
+                java_pids.add(proc.info['pid'])
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        if not java_pids:
+            self.findings.append({
+                'level': 'info',
+                'type': 'no_java_processes',
+                'message': 'Java-процессы не найдены — сетевая проверка пропущена',
+                'detail': '',
+            })
+            return
+
+        found_suspicious = False
+
+        try:
+            conns = psutil.net_connections(kind='inet')
+        except (psutil.AccessDenied, PermissionError):
+            self.findings.append({
+                'level': 'info',
+                'type': 'net_access_denied',
+                'message': 'Нет прав для просмотра всех соединений — запустите от имени администратора',
+                'detail': '',
+            })
+            return
+
+        for conn in conns:
+            # Фильтр по Java-PID (psutil может вернуть None для pid)
+            if conn.pid not in java_pids:
+                continue
+
+            raddr = conn.raddr
+            if not raddr:
+                continue
+
+            rip   = raddr.ip   if hasattr(raddr, 'ip')   else ''
+            rport = raddr.port if hasattr(raddr, 'port') else 0
+
+            addr_str = f'{rip}:{rport}'
+
+            # Подключения к известным доменам читов (по IP-строке — ограничено,
+            # но резолвинг IP по именам здесь неуместен)
+            for domain in SIGS['suspicious_domains']:
+                if domain in addr_str:
+                    self.findings.append({
+                        'level': 'danger',
+                        'type': 'cheat_server_connection',
+                        'message': f'Подключение Java к серверу чита: {domain}',
+                        'detail': f'PID {conn.pid} → {addr_str}',
+                    })
+                    self._set_risk('danger')
+                    found_suspicious = True
+
+            # JDWP-отладочные порты
+            lport = conn.laddr.port if conn.laddr else 0
+            if lport in JDWP_PORTS or rport in JDWP_PORTS:
+                self.findings.append({
+                    'level': 'suspicious',
+                    'type': 'jdwp_port',
+                    'message': f'Открыт JDWP-порт отладки JVM: {lport or rport}',
+                    'detail': f'PID {conn.pid} | статус: {conn.status}',
+                })
+                self._set_risk('suspicious')
+                found_suspicious = True
+
+        if not found_suspicious:
+            self.findings.append({
+                'level': 'info',
+                'type': 'no_suspicious_connections',
+                'message': 'Подозрительных сетевых соединений не обнаружено',
+                'detail': f'Проверено Java-процессов: {len(java_pids)}',
+            })
+
+    # ─── Fallback через netstat ────────────────────────────────────────────────
+
+    def _scan_via_netstat(self):
         try:
             result = subprocess.run(
-                ['ss', '-tulnp'],
-                capture_output=True, text=True, timeout=10
+                ['netstat', '-ano'],
+                capture_output=True, timeout=15,
             )
-            connections = result.stdout
+            output = result.stdout.decode('cp866', errors='replace')
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            self.findings.append({
+                'level': 'info',
+                'type': 'network_tools_unavailable',
+                'message': 'netstat недоступен — сетевая проверка пропущена',
+                'detail': '',
+            })
+            return
 
-            # Также получаем установленные соединения
-            result2 = subprocess.run(
-                ['ss', '-tp', 'state', 'established'],
-                capture_output=True, text=True, timeout=10
-            )
-            return connections + '\n' + result2.stdout
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            try:
-                result = subprocess.run(
-                    ['netstat', '-tulnp'],
-                    capture_output=True, text=True, timeout=10
-                )
-                return result.stdout
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                self.findings.append({
-                    'level': 'info',
-                    'type': 'network_tools_unavailable',
-                    'message': 'ss и netstat недоступны — проверка соединений пропущена',
-                    'detail': ''
-                })
-                return None
+        found_suspicious = False
 
-    def _analyze_connections(self, connections_output):
-        java_pids = self._get_java_pids()
-
-        # Ищем подключения к известным доменам читов
-        for line in connections_output.splitlines():
+        for line in output.splitlines():
             line_lower = line.lower()
+
             for domain in SIGS['suspicious_domains']:
                 if domain in line_lower:
                     self.findings.append({
                         'level': 'danger',
                         'type': 'cheat_server_connection',
-                        'message': f'Обнаружено подключение к серверу чита: {domain}',
-                        'detail': line.strip()
+                        'message': f'Подключение к серверу чита: {domain}',
+                        'detail': line.strip(),
                     })
                     self._set_risk('danger')
+                    found_suspicious = True
 
-        # Ищем Java-процессы с нестандартными входящими соединениями
-        # JDWP (Java Debug Wire Protocol) — порт 5005 по умолчанию
-        if ':5005' in connections_output or ':8000' in connections_output:
-            self.findings.append({
-                'level': 'suspicious',
-                'type': 'jdwp_port_open',
-                'message': 'Открыт порт отладки JVM (JDWP) — возможен удалённый доступ к Java-процессу',
-                'detail': 'Порты 5005 или 8000 открыты'
-            })
-            self._set_risk('suspicious')
+            for port in JDWP_PORTS:
+                if f':{port}' in line:
+                    self.findings.append({
+                        'level': 'suspicious',
+                        'type': 'jdwp_port',
+                        'message': f'Открыт JDWP-порт отладки JVM: {port}',
+                        'detail': line.strip(),
+                    })
+                    self._set_risk('suspicious')
+                    found_suspicious = True
 
-        if not self.findings:
+        if not found_suspicious:
             self.findings.append({
                 'level': 'info',
                 'type': 'no_suspicious_connections',
                 'message': 'Подозрительных сетевых соединений не обнаружено',
-                'detail': ''
+                'detail': '',
             })
-
-    def _get_java_pids(self):
-        pids = []
-        proc_path = Path('/proc')
-        try:
-            import pwd
-            target_uid = pwd.getpwnam(self.username).pw_uid
-        except (KeyError, ImportError):
-            target_uid = None
-
-        for pid_dir in proc_path.iterdir():
-            if not pid_dir.name.isdigit():
-                continue
-            try:
-                cmdline_path = pid_dir / 'cmdline'
-                if not cmdline_path.exists():
-                    continue
-                with open(cmdline_path, 'rb') as f:
-                    cmdline = f.read().decode('utf-8', errors='replace').replace('\x00', ' ')
-                if 'java' in cmdline.lower():
-                    pids.append(pid_dir.name)
-            except (PermissionError, FileNotFoundError):
-                continue
-        return pids
