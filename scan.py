@@ -18,6 +18,7 @@ import ctypes
 import argparse
 import webbrowser
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import http.server
 from pathlib import Path
 from datetime import datetime
@@ -137,8 +138,14 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_scanner(label, scanner_cls, username):
-    print(f'  {DIM}[...]{RESET} {label}', end='', flush=True)
+def run_scanner(label, scanner_cls, username, lock=None):
+    def _print(msg):
+        if lock:
+            with lock:
+                print(msg, flush=True)
+        else:
+            print(msg, flush=True)
+
     try:
         result = scanner_cls(username).scan()
         risk = result.get('risk', 'unknown')
@@ -149,10 +156,10 @@ def run_scanner(label, scanner_cls, username):
             'danger':     'ОПАСНОСТЬ',
             'unknown':    'НЕИЗВЕСТНО',
         }
-        print(f'\r  {color}[{label_map.get(risk, risk.upper())}]{RESET} {label}')
+        _print(f'  {color}[{label_map.get(risk, risk.upper())}]{RESET} {label}')
         return result
     except Exception as e:
-        print(f'\r  {RED}[ОШИБКА]{RESET} {label}')
+        _print(f'  {RED}[ОШИБКА]{RESET} {label}: {e}')
         return {'error': str(e), 'findings': [], 'risk': 'unknown', 'name': label, 'description': ''}
 
 
@@ -211,26 +218,33 @@ def main():
     print(f'  Запуск сканеров...\n')
 
     scanners = [
-        ('Сканер процессов',                   ProcessScanner),
-        ('Сканер модов (JAR)',                  ModScanner),
-        ('Сканер native-библиотек (DLL)',        NativeScanner),
-        ('Сканер сети',                         NetworkScanner),
-        ('Сканер файловой системы',             FilesystemScanner),
-        ('Проверка целостности клиента',        IntegrityChecker),
-        ('Сканер строк',                        StringsScanner),
-        ('Forensic-артефакты (удалённые файлы)', ArtifactsScanner),
-        ('ShellBag (история папок)',             ShellBagScanner),
-        ('ExecutedPrograms (история запусков)',   ExecutedProgramsScanner),
+        ('processes',      'Сканер процессов',                   ProcessScanner),
+        ('mods',           'Сканер модов (JAR)',                  ModScanner),
+        ('native',         'Сканер native-библиотек (DLL)',       NativeScanner),
+        ('network',        'Сканер сети',                         NetworkScanner),
+        ('filesystem',     'Сканер файловой системы',             FilesystemScanner),
+        ('integrity',      'Проверка целостности клиента',        IntegrityChecker),
+        ('strings',        'Сканер строк',                        StringsScanner),
+        ('artifacts',      'Forensic-артефакты (удалённые файлы)', ArtifactsScanner),
+        ('shellbag',       'ShellBag (история папок)',             ShellBagScanner),
+        ('executedprograms','ExecutedPrograms (история запусков)', ExecutedProgramsScanner),
     ]
 
     results = {}
-    key_map = [
-        'processes', 'mods', 'native', 'network', 'filesystem',
-        'integrity', 'strings', 'artifacts', 'shellbag', 'executedprograms',
-    ]
+    _print_lock = threading.Lock()
 
-    for i, (label, cls) in enumerate(scanners):
-        results[key_map[i]] = run_scanner(label, cls, args.user)
+    def _run(key, label, cls):
+        result = run_scanner(label, cls, args.user, _print_lock)
+        return key, result
+
+    # Параллельный запуск — все сканеры одновременно
+    # (строки и диск C долгие, но не блокируют остальные)
+    with ThreadPoolExecutor(max_workers=len(scanners)) as pool:
+        futures = {pool.submit(_run, key, label, cls): key
+                   for key, label, cls in scanners}
+        for fut in as_completed(futures):
+            key, result = fut.result()
+            results[key] = result
 
     order = {'clean': 0, 'suspicious': 1, 'danger': 2, 'unknown': -1}
     overall = max(results.values(), key=lambda d: order.get(d.get('risk', 'unknown'), -1))

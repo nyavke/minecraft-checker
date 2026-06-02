@@ -331,6 +331,7 @@ class FilesystemScanner:
 
         suspect_ext = {'.exe', '.dll', '.jar', '.bat', '.cmd', '.ps1', '.vbs'}
         found = set()
+        MAX_FILES = 5000  # лимит файлов — защита от зависания на больших системах
 
         for root in scan_roots:
             if not root.exists():
@@ -373,17 +374,15 @@ class FilesystemScanner:
                 if top.is_dir():
                     try:
                         for depth1 in top.iterdir():
+                            if len(found) >= MAX_FILES:
+                                break
                             self._check_entry(depth1, ALL_PATTERNS, suspect_ext, found)
                             if depth1.is_dir():
                                 try:
                                     for depth2 in depth1.iterdir():
+                                        if len(found) >= MAX_FILES:
+                                            break
                                         self._check_entry(depth2, ALL_PATTERNS, suspect_ext, found)
-                                        if depth2.is_dir():
-                                            try:
-                                                for depth3 in depth2.iterdir():
-                                                    self._check_entry(depth3, ALL_PATTERNS, suspect_ext, found)
-                                            except (PermissionError, OSError):
-                                                pass
                                 except (PermissionError, OSError):
                                     pass
                     except (PermissionError, OSError):

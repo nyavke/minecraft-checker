@@ -124,6 +124,12 @@ STRING_PATTERNS = [
     (r'me\.doomsday|com\.doomsday', 'Doomsday Client',    'danger'),
 ]
 
+# Скомпилированные паттерны — один раз при загрузке модуля (не при каждом вызове)
+_COMPILED_PATTERNS = [
+    (re.compile(pattern, re.IGNORECASE), name, level)
+    for pattern, name, level in STRING_PATTERNS
+]
+
 # Windows API константы
 PROCESS_VM_READ           = 0x0010
 PROCESS_QUERY_INFORMATION = 0x0400
@@ -135,7 +141,7 @@ PAGE_EXECUTE              = 0x10
 PAGE_EXECUTE_READ         = 0x20
 PAGE_EXECUTE_READWRITE    = 0x40
 PAGE_EXECUTE_WRITECOPY    = 0x80
-MAX_SEGMENT_SIZE          = 4 * 1024 * 1024   # 4 МБ на регион
+MAX_SEGMENT_SIZE          = 2 * 1024 * 1024   # 2 МБ на регион (было 4 МБ)
 
 EXEC_PROTECTIONS = {
     PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY
@@ -403,12 +409,15 @@ class StringsScanner:
     def _scan_disk_files(self):
         scan_roots = [self.appdata, self.localappdata]
         jar_files = []
+        MAX_JARS = 80   # лимит: на слабых ПК rglob может найти сотни JARs
 
         for root in scan_roots:
             if not root.exists():
                 continue
             try:
                 for jar in root.rglob('*.jar'):
+                    if len(jar_files) >= MAX_JARS:
+                        break
                     if jar.stat().st_size < 50 * 1024 * 1024:
                         jar_files.append(jar)
             except (PermissionError, OSError):
@@ -465,11 +474,11 @@ class StringsScanner:
         self._match_patterns(str(file_path), text, found_signatures, source=str(file_path))
 
     def _match_patterns(self, location, text, found_signatures, source):
-        for pattern, cheat_name, level in STRING_PATTERNS:
+        for compiled, cheat_name, level in _COMPILED_PATTERNS:
             sig_key = f'{cheat_name}:{source}'
             if sig_key in found_signatures:
                 continue
-            if re.search(pattern, text, re.IGNORECASE):
+            if compiled.search(text):
                 found_signatures.add(sig_key)
                 src_label = Path(source).name if (os.sep in source or '/' in source) else source
                 self.findings.append({
