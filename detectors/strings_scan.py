@@ -485,6 +485,6 @@ class StringsScanner:
                     'level': level,
                     'type': 'strings_signature_match',
                     'message': f'Сигнатура "{cheat_name}" найдена в {src_label}',
-                    'detail': f'Паттерн: {pattern} | Источник: {source}',
+                    'detail': f'Паттерн: {compiled.pattern} | Источник: {source}',
                 })
                 self._set_risk(level)
