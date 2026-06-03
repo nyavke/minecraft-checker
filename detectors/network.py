@@ -1,5 +1,6 @@
 import json
 import subprocess
+import threading
 from pathlib import Path
 
 try:
@@ -11,16 +12,31 @@ except ImportError:
 with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
     SIGS = json.load(f)
 
-# Порты отладки JVM (JDWP)
 JDWP_PORTS = {5005, 8000, 9009}
+NET_TIMEOUT = 8   # секунд максимум на получение соединений
+
+
+def _get_connections_with_timeout(timeout=NET_TIMEOUT):
+    """psutil.net_connections может зависать — запускаем в отдельном потоке с таймаутом."""
+    result = [None]
+    error  = [None]
+
+    def _worker():
+        try:
+            result[0] = psutil.net_connections(kind='inet')
+        except Exception as e:
+            error[0] = e
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout)
+
+    if t.is_alive():
+        return None, TimeoutError(f'net_connections завис (>{timeout}с)')
+    return result[0], error[0]
 
 
 class NetworkScanner:
-    """
-    Проверяет сетевые соединения Java-процессов:
-    подключения к известным серверам читов, отладочные порты JVM.
-    """
-
     def __init__(self, username):
         self.username = username
         self.findings = []
@@ -43,12 +59,9 @@ class NetworkScanner:
         if order.get(level, 0) > order.get(self.risk, 0):
             self.risk = level
 
-    # ─── psutil-путь ──────────────────────────────────────────────────────────
-
     def _scan_via_psutil(self):
         import psutil
 
-        # Собираем PID всех Java-процессов целевого пользователя
         java_pids = set()
         for proc in psutil.process_iter(['pid', 'name', 'username']):
             try:
@@ -72,35 +85,30 @@ class NetworkScanner:
             })
             return
 
-        found_suspicious = False
+        conns, err = _get_connections_with_timeout()
 
-        try:
-            conns = psutil.net_connections(kind='inet')
-        except (psutil.AccessDenied, PermissionError):
+        if conns is None:
+            # Зависание или ошибка — переходим на netstat
             self.findings.append({
                 'level': 'info',
-                'type': 'net_access_denied',
-                'message': 'Нет прав для просмотра всех соединений — запустите от имени администратора',
-                'detail': '',
+                'type': 'net_connections_timeout',
+                'message': f'psutil.net_connections не ответил за {NET_TIMEOUT}с — используется netstat',
+                'detail': str(err),
             })
+            self._scan_via_netstat()
             return
 
+        found_suspicious = False
         for conn in conns:
-            # Фильтр по Java-PID (psutil может вернуть None для pid)
             if conn.pid not in java_pids:
                 continue
-
             raddr = conn.raddr
             if not raddr:
                 continue
-
             rip   = raddr.ip   if hasattr(raddr, 'ip')   else ''
             rport = raddr.port if hasattr(raddr, 'port') else 0
-
             addr_str = f'{rip}:{rport}'
 
-            # Подключения к известным доменам читов (по IP-строке — ограничено,
-            # но резолвинг IP по именам здесь неуместен)
             for domain in SIGS['suspicious_domains']:
                 if domain in addr_str:
                     self.findings.append({
@@ -112,7 +120,6 @@ class NetworkScanner:
                     self._set_risk('danger')
                     found_suspicious = True
 
-            # JDWP-отладочные порты
             lport = conn.laddr.port if conn.laddr else 0
             if lport in JDWP_PORTS or rport in JDWP_PORTS:
                 self.findings.append({
@@ -132,29 +139,26 @@ class NetworkScanner:
                 'detail': f'Проверено Java-процессов: {len(java_pids)}',
             })
 
-    # ─── Fallback через netstat ────────────────────────────────────────────────
-
     def _scan_via_netstat(self):
         try:
             result = subprocess.run(
                 ['netstat', '-ano'],
-                capture_output=True, timeout=15,
+                capture_output=True,
+                timeout=10,
             )
             output = result.stdout.decode('cp866', errors='replace')
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             self.findings.append({
                 'level': 'info',
                 'type': 'network_tools_unavailable',
-                'message': 'netstat недоступен — сетевая проверка пропущена',
+                'message': 'netstat недоступен или завис — сетевая проверка пропущена',
                 'detail': '',
             })
             return
 
         found_suspicious = False
-
         for line in output.splitlines():
             line_lower = line.lower()
-
             for domain in SIGS['suspicious_domains']:
                 if domain in line_lower:
                     self.findings.append({
@@ -165,7 +169,6 @@ class NetworkScanner:
                     })
                     self._set_risk('danger')
                     found_suspicious = True
-
             for port in JDWP_PORTS:
                 if f':{port}' in line:
                     self.findings.append({
