@@ -10,7 +10,7 @@ with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
 
 
 def _get_user_paths(username):
-    """Вернуть (appdata, localappdata, userprofile) для указанного пользователя."""
+    """Return (appdata, localappdata, userprofile) for the specified user."""
     current = os.environ.get('USERNAME', '')
     if not username or username.lower() == current.lower():
         appdata      = Path(os.environ.get('APPDATA',      ''))
@@ -37,7 +37,7 @@ def _find_minecraft_dirs(username):
         userprofile  / 'curseforge' / 'minecraft' / 'Instances',
         userprofile  / 'AppData' / 'Roaming' / '.minecraft',
     ]
-    # Также проверяем пути из cheats.json (адаптированные для Windows)
+    # Also check paths from cheats.json (adapted for Windows)
     for p in SIGS.get('launcher_paths_win', []):
         resolved = Path(p
             .replace('%APPDATA%', str(appdata))
@@ -62,7 +62,7 @@ class ModScanner:
         self._scan_minecraft_libraries()
         self._check_version_sizes()
         return {
-            'name': 'Сканер модов',
+            'name': 'Mod Scanner',
             'description': (
                 'JAR-файлы: Minecraft dirs, Downloads, LabyMod addons, '
                 'libraries/com/github, размеры версий'
@@ -83,10 +83,10 @@ class ModScanner:
             self.findings.append({
                 'level': 'info',
                 'type': 'no_minecraft_dirs',
-                'message': 'Папки Minecraft не найдены',
+                'message': 'Minecraft folders not found',
                 'detail': (
-                    'Проверены: %APPDATA%\\.minecraft, PrismLauncher, MultiMC, '
-                    'TLauncher, LunarClient, Feather, CurseForge и др.'
+                    'Checked: %APPDATA%\\.minecraft, PrismLauncher, MultiMC, '
+                    'TLauncher, LunarClient, Feather, CurseForge, etc.'
                 ),
             })
             return
@@ -97,7 +97,7 @@ class ModScanner:
             if mods_dir.exists():
                 jar_files.extend(mods_dir.glob('*.jar'))
 
-            # Инстансы PrismLauncher / MultiMC / CurseForge
+            # PrismLauncher / MultiMC / CurseForge instances
             for pattern in ('*/mods/*.jar', '*/.minecraft/mods/*.jar', '*/minecraft/mods/*.jar'):
                 try:
                     jar_files.extend(mc_dir.glob(pattern))
@@ -108,8 +108,8 @@ class ModScanner:
             self.findings.append({
                 'level': 'info',
                 'type': 'no_mods_found',
-                'message': 'Файлы модов (.jar) не найдены',
-                'detail': f'Проверено {len(mc_dirs)} папок Minecraft',
+                'message': 'Mod files (.jar) not found',
+                'detail': f'Checked {len(mc_dirs)} Minecraft folders',
             })
             return
 
@@ -124,8 +124,8 @@ class ModScanner:
                 self.findings.append({
                     'level': 'danger',
                     'type': 'cheat_mod_name',
-                    'message': f'Имя мода совпадает с известным читом: {jar_path.name}',
-                    'detail': f'Паттерн: {pattern} | Путь: {jar_path}',
+                    'message': f'Mod name matches known cheat: {jar_path.name}',
+                    'detail': f'Pattern: {pattern} | Path: {jar_path}',
                 })
                 self._set_risk('danger')
                 return
@@ -146,7 +146,7 @@ class ModScanner:
             self.findings.append({
                 'level': 'suspicious',
                 'type': 'jar_read_error',
-                'message': f'Не удалось прочитать JAR: {jar_path.name}',
+                'message': f'Failed to read JAR: {jar_path.name}',
                 'detail': str(e),
             })
             self._set_risk('suspicious')
@@ -160,7 +160,7 @@ class ModScanner:
                 self.findings.append({
                     'level': level,
                     'type': 'suspicious_manifest',
-                    'message': f'Подозрительный MANIFEST.MF в {jar_path.name}: {key}',
+                    'message': f'Suspicious MANIFEST.MF in {jar_path.name}: {key}',
                     'detail': f'{key}: {value}',
                 })
                 self._set_risk(level)
@@ -173,8 +173,8 @@ class ModScanner:
                     self.findings.append({
                         'level': 'danger',
                         'type': 'cheat_class_signature',
-                        'message': f'Обнаружены классы {cheat_name} в {jar_path.name}',
-                        'detail': f'Класс: {class_path} | Сигнатура: {pkg_sig}',
+                        'message': f'Detected {cheat_name} classes in {jar_path.name}',
+                        'detail': f'Class: {class_path} | Signature: {pkg_sig}',
                     })
                     self._set_risk('danger')
                     return
@@ -191,8 +191,8 @@ class ModScanner:
             self.findings.append({
                 'level': 'suspicious',
                 'type': 'heavy_obfuscation',
-                'message': f'Сильная обфускация кода в {jar_path.name} ({int(ratio*100)}% коротких имён)',
-                'detail': f'Всего классов: {len(class_files)}, коротких имён: {len(short_names)}',
+                'message': f'Heavy code obfuscation in {jar_path.name} ({int(ratio*100)}% short names)',
+                'detail': f'Total classes: {len(class_files)}, short names: {len(short_names)}',
             })
             self._set_risk('suspicious')
 
@@ -200,9 +200,9 @@ class ModScanner:
 
     def _scan_downloads(self):
         """
-        Сканирует папку Downloads на JAR-файлы.
-        Проверяет содержимое каждого JAR независимо от имени файла —
-        случайное имя (jasdIJHDiFuasdiu.jar) не скрывает сигнатуры классов.
+        Scans the Downloads folder for JAR files.
+        Checks the contents of each JAR regardless of filename —
+        a random name (jasdIJHDiFuasdiu.jar) does not hide class signatures.
         """
         appdata = Path(os.environ.get('APPDATA', ''))
         userprofile = Path(os.environ.get('USERPROFILE', ''))
@@ -223,18 +223,18 @@ class ModScanner:
             return
 
         for jar_path in jar_files:
-            # Сначала проверяем имя
+            # First check the name
             name_lower = jar_path.name.lower()
             name_hit = any(p in name_lower for p in SIGS['mod_name_patterns'])
 
-            # Сканируем содержимое JAR в любом случае
+            # Scan JAR contents regardless
             before = len(self.findings)
             self._scan_jar(jar_path)
             content_hit = len(self.findings) > before
 
-            # Если имя и содержимое ничего не дали — JAR неизвестный, но в Downloads
+            # If name and contents both clean — JAR is unknown but in Downloads
             if not name_hit and not content_hit:
-                # Проверяем — это вообще валидный JAR?
+                # Check if this is actually a valid JAR?
                 is_jar = False
                 try:
                     with zipfile.ZipFile(jar_path, 'r') as zf:
@@ -243,15 +243,15 @@ class ModScanner:
                     pass
 
                 if is_jar:
-                    # JAR с Java-классами но без известных сигнатур — подозрительно
+                    # JAR with Java classes but no known signatures — suspicious
                     self.findings.append({
                         'level': 'suspicious',
                         'type': 'unknown_jar_in_downloads',
-                        'message': f'Неизвестный JAR с Java-классами в папке Downloads: {jar_path.name}',
+                        'message': f'Unknown JAR with Java classes in Downloads folder: {jar_path.name}',
                         'detail': (
-                            f'Путь: {jar_path}\n'
-                            f'Имя не совпадает с известными читами, '
-                            f'но содержит скомпилированный Java-код — проверьте вручную'
+                            f'Path: {jar_path}\n'
+                            f'Name does not match known cheats, '
+                            f'but contains compiled Java code — check manually'
                         ),
                     })
                     self._set_risk('suspicious')
@@ -260,8 +260,8 @@ class ModScanner:
 
     def _scan_labymod_addons(self):
         """
-        Мануал: LabyMod addons — подозрительные размеры (9kb или 17kb),
-        AutoReconnect с * .class, sprint_addon.jar.
+        Manual: LabyMod addons — suspicious sizes (9kb or 17kb),
+        AutoReconnect with *.class, sprint_addon.jar.
         """
         appdata = Path(os.environ.get('APPDATA', ''))
         suspicious_sizes_kb = set(SIGS.get('labymod_suspicious_addon_sizes_kb', [9, 17]))
@@ -278,20 +278,20 @@ class ModScanner:
                     for jar in addon_dir.glob('*.jar'):
                         size_kb = jar.stat().st_size // 1024
 
-                        # Известное имя чит-аддона
+                        # Known cheat addon name
                         if jar.name in known_cheat_addons:
                             self.findings.append({
                                 'level': 'danger',
                                 'type': 'labymod_cheat_addon_name',
-                                'message': f'LabyMod: известный чит-аддон — {jar.name}',
+                                'message': f'LabyMod: known cheat addon — {jar.name}',
                                 'detail': str(jar),
                             })
                             self._set_risk('danger')
                             continue
 
-                        # Подозрительный размер
+                        # Suspicious size
                         if size_kb in suspicious_sizes_kb:
-                            # Проверяем содержимое — есть ли пробельный класс или SpritingAddon
+                            # Check contents — any space-containing class or SpritingAddon
                             try:
                                 with zipfile.ZipFile(jar, 'r') as zf:
                                     names = zf.namelist()
@@ -301,8 +301,8 @@ class ModScanner:
                                         self.findings.append({
                                             'level': 'danger',
                                             'type': 'labymod_cheat_addon_content',
-                                            'message': f'LabyMod: чит-аддон (подозрительные классы) — {jar.name}',
-                                            'detail': f'Размер: {size_kb} КБ | Путь: {jar}',
+                                            'message': f'LabyMod: cheat addon (suspicious classes) — {jar.name}',
+                                            'detail': f'Size: {size_kb} KB | Path: {jar}',
                                         })
                                         self._set_risk('danger')
                             except (zipfile.BadZipFile, OSError):
@@ -314,8 +314,8 @@ class ModScanner:
 
     def _scan_minecraft_libraries(self):
         """
-        Мануал: в libraries/com/github должна быть только папка 'oshi'.
-        Лишние папки — признак чита (Impact прячется там).
+        Manual: libraries/com/github should only contain the 'oshi' folder.
+        Extra folders are a sign of a cheat (Impact hides there).
         """
         appdata = Path(os.environ.get('APPDATA', ''))
         mc_base = appdata / '.minecraft' / 'libraries' / 'com' / 'github'
@@ -331,22 +331,22 @@ class ModScanner:
                     self.findings.append({
                         'level': 'suspicious',
                         'type': 'suspicious_library_folder',
-                        'message': f'.minecraft/libraries/com/github: неизвестная папка — {entry.name}',
+                        'message': f'.minecraft/libraries/com/github: unknown folder — {entry.name}',
                         'detail': (
-                            f'Путь: {entry}\n'
-                            f'Ожидается только "oshi". Это может быть Impact или другой чит-клиент.'
+                            f'Path: {entry}\n'
+                            f'Only "oshi" is expected. This may be Impact or another cheat client.'
                         ),
                     })
                     self._set_risk('suspicious')
         except (PermissionError, OSError):
             pass
 
-    # ─── Проверка размеров .minecraft/versions ────────────────────────────────
+    # ─── .minecraft/versions size check ──────────────────────────────────────
 
     def _check_version_sizes(self):
         """
-        Мануал: размер чистого client.jar известен для каждой версии.
-        Отличие — признак модифицированного клиента.
+        Manual: the size of a clean client.jar is known for each version.
+        A difference indicates a modified client.
         """
         appdata = Path(os.environ.get('APPDATA', ''))
         versions_dir = appdata / '.minecraft' / 'versions'
@@ -386,13 +386,13 @@ class ModScanner:
                         'level': 'suspicious',
                         'type': 'client_jar_size_mismatch',
                         'message': (
-                            f'Размер client.jar {ver_name} отличается от оригинала Mojang '
-                            f'на {diff_kb} КБ'
+                            f'client.jar size for {ver_name} differs from Mojang original '
+                            f'by {diff_kb} KB'
                         ),
                         'detail': (
-                            f'Ожидается: ~{expected_kb} КБ | '
-                            f'Реальный: {actual_kb} КБ | '
-                            f'Путь: {client_jar}'
+                            f'Expected: ~{expected_kb} KB | '
+                            f'Actual: {actual_kb} KB | '
+                            f'Path: {client_jar}'
                         ),
                     })
                     self._set_risk('suspicious')

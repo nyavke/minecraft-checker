@@ -111,29 +111,29 @@ def parse_args():
     default_output = str(Path(temp_dir) / 'pt_report.html')
 
     parser = argparse.ArgumentParser(
-        description='PT Check — сканирует Windows на читы Minecraft',
+        description='PT Check — scans Windows for Minecraft cheats',
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         '--user', '-u',
         default=current_user,
-        help=f'Имя пользователя Windows (по умолчанию: {current_user})'
+        help=f'Windows username (default: {current_user})'
     )
     parser.add_argument(
         '--output', '-o',
         default=default_output,
-        help=f'Путь для сохранения HTML-отчёта (по умолчанию: {default_output})'
+        help=f'Path for HTML report (default: {default_output})'
     )
     parser.add_argument(
         '--port', '-p',
         type=int,
         default=8888,
-        help='Порт HTTP-сервера (по умолчанию: 8888)'
+        help='HTTP server port (default: 8888)'
     )
     parser.add_argument(
         '--no-serve',
         action='store_true',
-        help='Открыть файл напрямую, без HTTP-сервера'
+        help='Open report file directly, without HTTP server'
     )
     return parser.parse_args()
 
@@ -151,15 +151,15 @@ def run_scanner(label, scanner_cls, username, lock=None):
         risk = result.get('risk', 'unknown')
         color = RISK_COLORS.get(risk, DIM)
         label_map = {
-            'clean':      'ЧИСТО',
-            'suspicious': 'ПОДОЗРИТЕЛЬНО',
-            'danger':     'ОПАСНОСТЬ',
-            'unknown':    'НЕИЗВЕСТНО',
+            'clean':      'CLEAN',
+            'suspicious': 'SUSPICIOUS',
+            'danger':     'DANGER',
+            'unknown':    'UNKNOWN',
         }
         _print(f'  {color}[{label_map.get(risk, risk.upper())}]{RESET} {label}')
         return result
     except Exception as e:
-        _print(f'  {RED}[ОШИБКА]{RESET} {label}: {e}')
+        _print(f'  {RED}[ERROR]{RESET} {label}: {e}')
         return {'error': str(e), 'findings': [], 'risk': 'unknown', 'name': label, 'description': ''}
 
 
@@ -176,25 +176,25 @@ def serve_report(output_path, port):
     try:
         server = http.server.HTTPServer(('127.0.0.1', port), SilentHandler)
     except OSError as e:
-        print(f'\n{RED}[!] Не удалось запустить сервер на порту {port}: {e}{RESET}')
-        print(f'    Открываю файл напрямую...')
+        print(f'\n{RED}[!] Could not start server on port {port}: {e}{RESET}')
+        print(f'    Opening file directly...')
         webbrowser.open(Path(output_path).as_uri())
         return
 
     url = f'http://localhost:{port}/{report_file}'
     print(f'\n{CYAN}{"─"*55}{RESET}')
-    print(f'{BOLD}  Отчёт готов!{RESET}')
+    print(f'{BOLD}  Report ready!{RESET}')
     print(f'{CYAN}{"─"*55}{RESET}')
-    print(f'  Адрес: {BOLD}{url}{RESET}')
-    print(f'  Файл:  {output_path}')
-    print(f'\n  {DIM}Ctrl+C — остановить сервер{RESET}\n')
+    print(f'  URL:  {BOLD}{url}{RESET}')
+    print(f'  File: {output_path}')
+    print(f'\n  {DIM}Ctrl+C — stop server{RESET}\n')
 
     threading.Timer(0.6, lambda: webbrowser.open(url)).start()
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print(f'\n{DIM}[*] Сервер остановлен.{RESET}')
+        print(f'\n{DIM}[*] Server stopped.{RESET}')
 
 
 def main():
@@ -202,32 +202,30 @@ def main():
     args = parse_args()
 
     if not is_admin():
-        print(f'{YELLOW}[*] Запрос прав администратора (UAC)...{RESET}')
+        print(f'{YELLOW}[*] Requesting administrator privileges (UAC)...{RESET}')
         if elevate_and_restart():
-            # Успешно запустили повышенный процесс — выходим из текущего
             sys.exit(0)
         else:
-            # Пользователь отклонил UAC — продолжаем без прав
-            print(f'{YELLOW}[!] UAC отклонён. Часть проверок (Prefetch, BAM, память) будет ограничена.{RESET}\n')
+            print(f'{YELLOW}[!] UAC denied. Some checks (Prefetch, BAM, memory) will be limited.{RESET}\n')
 
     banner()
 
-    print(f'{BOLD}  Пользователь:{RESET} {args.user}')
-    print(f'{BOLD}  Время:{RESET} {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    print(f'{BOLD}  User:{RESET} {args.user}')
+    print(f'{BOLD}  Time:{RESET} {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     print(f'\n{CYAN}{"─"*55}{RESET}')
-    print(f'  Запуск сканеров...\n')
+    print(f'  Starting scanners...\n')
 
     scanners = [
-        ('processes',      'Сканер процессов',                   ProcessScanner),
-        ('mods',           'Сканер модов (JAR)',                  ModScanner),
-        ('native',         'Сканер native-библиотек (DLL)',       NativeScanner),
-        ('network',        'Сканер сети',                         NetworkScanner),
-        ('filesystem',     'Сканер файловой системы',             FilesystemScanner),
-        ('integrity',      'Проверка целостности клиента',        IntegrityChecker),
-        ('strings',        'Сканер строк',                        StringsScanner),
-        ('artifacts',      'Forensic-артефакты (удалённые файлы)', ArtifactsScanner),
-        ('shellbag',       'ShellBag (история папок)',             ShellBagScanner),
-        ('executedprograms','ExecutedPrograms (история запусков)', ExecutedProgramsScanner),
+        ('processes',       'Process Scanner',            ProcessScanner),
+        ('mods',            'Mod Scanner (JAR)',           ModScanner),
+        ('native',          'Native Scanner (DLL)',        NativeScanner),
+        ('network',         'Network Scanner',             NetworkScanner),
+        ('filesystem',      'Filesystem Scanner',          FilesystemScanner),
+        ('integrity',       'Client Integrity Check',      IntegrityChecker),
+        ('strings',         'Strings Scanner',             StringsScanner),
+        ('artifacts',       'Forensic Artifacts',          ArtifactsScanner),
+        ('shellbag',        'ShellBag (folder history)',   ShellBagScanner),
+        ('executedprograms','Executed Programs',           ExecutedProgramsScanner),
     ]
 
     results = {}
@@ -251,24 +249,24 @@ def main():
     overall_risk = overall.get('risk', 'unknown')
     risk_color = RISK_COLORS.get(overall_risk, DIM)
     risk_names = {
-        'clean':      'ЧИСТО',
-        'suspicious': 'ПОДОЗРИТЕЛЬНО',
-        'danger':     'ОПАСНОСТЬ',
-        'unknown':    'НЕИЗВЕСТНО',
+        'clean':      'CLEAN',
+        'suspicious': 'SUSPICIOUS',
+        'danger':     'DANGER',
+        'unknown':    'UNKNOWN',
     }
 
     print(f'\n{CYAN}{"─"*55}{RESET}')
-    print(f'  Итоговый результат: {risk_color}{BOLD}{risk_names.get(overall_risk, overall_risk)}{RESET}')
+    print(f'  Overall result: {risk_color}{BOLD}{risk_names.get(overall_risk, overall_risk)}{RESET}')
     print(f'{CYAN}{"─"*55}{RESET}\n')
 
-    print(f'  Генерация HTML-отчёта...', end='', flush=True)
+    print(f'  Generating HTML report...', end='', flush=True)
     try:
         gen  = ReportGenerator(results, args.user)
         html = gen.generate()
         Path(args.output).write_text(html, encoding='utf-8')
-        print(f'\r  {GREEN}[OK]{RESET} Отчёт сохранён: {args.output}')
+        print(f'\r  {GREEN}[OK]{RESET} Report saved: {args.output}')
     except Exception as e:
-        print(f'\r  {RED}[!]{RESET} Ошибка генерации отчёта: {e}')
+        print(f'\r  {RED}[!]{RESET} Report generation error: {e}')
         sys.exit(1)
 
     if args.no_serve:

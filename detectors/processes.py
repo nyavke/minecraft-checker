@@ -38,7 +38,7 @@ class ProcessScanner:
             self.findings.append({
                 'level': 'info',
                 'type': 'psutil_missing',
-                'message': 'psutil не установлен — расширенное сканирование процессов недоступно',
+                'message': 'psutil not installed — advanced process scanning unavailable',
                 'detail': 'pip install psutil'
             })
             self._scan_via_tasklist()
@@ -46,8 +46,8 @@ class ProcessScanner:
         self._check_appinit_dlls()
 
         return {
-            'name': 'Сканер процессов',
-            'description': 'Запущенные процессы, аргументы JVM, AppInit_DLLs, инжекция DLL в Java',
+            'name': 'Process Scanner',
+            'description': 'Running processes, JVM arguments, AppInit_DLLs, DLL injection in Java',
             'findings': self.findings,
             'risk': self.risk,
         }
@@ -58,12 +58,12 @@ class ProcessScanner:
             self.risk = level
 
     def _win_username(self, proc_user):
-        """Вернуть имя пользователя без домена (DOMAIN\\user → user)."""
+        """Return username without domain (DOMAIN\\user → user)."""
         if proc_user and '\\' in proc_user:
             return proc_user.split('\\')[-1]
         return proc_user or ''
 
-    # ─── Fallback без psutil ───────────────────────────────────────────────────
+    # ─── Fallback without psutil ──────────────────────────────────────────────
 
     def _scan_via_tasklist(self):
         try:
@@ -82,7 +82,7 @@ class ProcessScanner:
                         self.findings.append({
                             'level': 'danger',
                             'type': 'known_cheat_process',
-                            'message': f'Известный чит-процесс: {parts[0]}',
+                            'message': f'Known cheat process: {parts[0]}',
                             'detail': line.strip(),
                         })
                         self._set_risk('danger')
@@ -90,7 +90,7 @@ class ProcessScanner:
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
 
-    # ─── psutil-сканеры ───────────────────────────────────────────────────────
+    # ─── psutil scanners ─────────────────────────────────────────────────────
 
     def _scan_all_processes(self):
         import psutil
@@ -108,7 +108,7 @@ class ProcessScanner:
                             'level': 'danger',
                             'type': 'known_cheat_process',
                             'pid': str(proc.info['pid']),
-                            'message': f'Известный чит-процесс: {proc.info["name"]}',
+                            'message': f'Known cheat process: {proc.info["name"]}',
                             'detail': f'PID: {proc.info["pid"]}',
                         })
                         self._set_risk('danger')
@@ -135,7 +135,7 @@ class ProcessScanner:
                 if is_minecraft:
                     minecraft_found = True
 
-                # Подозрительные аргументы JVM
+                # Suspicious JVM arguments
                 for arg in SUSPICIOUS_JVM_ARGS:
                     if arg in cmdline:
                         level = 'danger' if arg in ('-javaagent', '-agentpath', '-agentlib') else 'suspicious'
@@ -143,12 +143,12 @@ class ProcessScanner:
                             'level': level,
                             'type': 'suspicious_jvm_arg',
                             'pid': str(proc.info['pid']),
-                            'message': f'Подозрительный аргумент JVM: {arg}',
+                            'message': f'Suspicious JVM argument: {arg}',
                             'detail': cmdline[:400],
                         })
                         self._set_risk(level)
 
-                # Загруженные DLL из подозрительных мест
+                # Loaded DLLs from suspicious locations
                 try:
                     for m in proc.memory_maps():
                         path = getattr(m, 'path', '')
@@ -157,7 +157,7 @@ class ProcessScanner:
                                 'level': 'danger',
                                 'type': 'suspicious_dll_injected',
                                 'pid': str(proc.info['pid']),
-                                'message': f'Подозрительная DLL загружена в JVM: {Path(path).name}',
+                                'message': f'Suspicious DLL loaded into JVM: {Path(path).name}',
                                 'detail': path,
                             })
                             self._set_risk('danger')
@@ -171,8 +171,8 @@ class ProcessScanner:
             self.findings.append({
                 'level': 'info',
                 'type': 'minecraft_not_running',
-                'message': 'Minecraft не запущен во время проверки',
-                'detail': 'Некоторые проверки требуют запущенного клиента',
+                'message': 'Minecraft was not running during the check',
+                'detail': 'Some checks require a running client',
             })
 
     def _is_suspicious_dll(self, path):
@@ -186,7 +186,7 @@ class ProcessScanner:
         keywords = ['inject', 'hook', 'hack', 'cheat', 'bypass', 'loader', 'preload']
         return any(k in path_lower for k in keywords)
 
-    # ─── Реестр ───────────────────────────────────────────────────────────────
+    # ─── Registry ────────────────────────────────────────────────────────────
 
     def _check_appinit_dlls(self):
         if not WINREG_OK:
@@ -206,7 +206,7 @@ class ProcessScanner:
                         self.findings.append({
                             'level': 'danger',
                             'type': 'appinit_dlls',
-                            'message': 'AppInit_DLLs в реестре — глобальная инъекция DLL во все процессы',
+                            'message': 'AppInit_DLLs in registry — global DLL injection into all processes',
                             'detail': f'HKLM\\{subkey}\nAppInit_DLLs={value}',
                         })
                         self._set_risk('danger')

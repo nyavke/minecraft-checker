@@ -32,7 +32,7 @@ TH32CS_SNAPMODULE         = 0x00000008
 TH32CS_SNAPMODULE32       = 0x00000010
 MAX_PATH                  = 260
 MEM_COMMIT                = 0x1000
-MEM_PRIVATE               = 0x20000   # не отображённая файлом память (anonymous)
+MEM_PRIVATE               = 0x20000   # anonymous (not file-backed) memory
 PAGE_NOACCESS             = 0x01
 PAGE_GUARD                = 0x100
 PAGE_EXECUTE              = 0x10
@@ -44,9 +44,9 @@ EXEC_PROTECTIONS = {
     PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY
 }
 
-# Минимальный размер anonymous exec-региона, который считается подозрительным.
-# JVM JIT создаёт много мелких регионов; большой единый блок — признак инжекции.
-ANON_EXEC_SUSPICIOUS_SIZE = 512 * 1024   # 512 КБ
+# Minimum size of an anonymous exec region considered suspicious.
+# JVM JIT creates many small regions; a large single block is a sign of injection.
+ANON_EXEC_SUSPICIOUS_SIZE = 512 * 1024   # 512 KB
 
 
 class MODULEENTRY32W(ctypes.Structure):
@@ -77,7 +77,7 @@ class MEMORY_BASIC_INFORMATION(ctypes.Structure):
 
 
 def _get_loaded_modules(pid):
-    """Получить все модули процесса через CreateToolhelp32Snapshot."""
+    """Get all modules of a process via CreateToolhelp32Snapshot."""
     kernel32 = ctypes.windll.kernel32
     snap = kernel32.CreateToolhelp32Snapshot(
         TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid
@@ -102,7 +102,7 @@ def _get_loaded_modules(pid):
 
 
 def _enum_exec_memory(pid):
-    """Вернуть список anonymous executable регионов памяти процесса."""
+    """Return a list of anonymous executable memory regions for the process."""
     kernel32 = ctypes.windll.kernel32
     handle = kernel32.OpenProcess(
         PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid
@@ -153,11 +153,11 @@ def _enum_exec_memory(pid):
 
 class NativeScanner:
     """
-    Windows native-уровень:
-    - Phantom-модули (загружены в память, файл удалён с диска)
+    Windows native level:
+    - Phantom modules (loaded into memory, file deleted from disk)
     - Anonymous executable memory (reflective injection / deleted-file cheats)
     - AppInit_DLLs, IFEO
-    - Подозрительные файлы в TEMP и AppData
+    - Suspicious files in TEMP and AppData
     """
 
     def __init__(self, username):
@@ -185,10 +185,10 @@ class NativeScanner:
             self._check_phantom_modules()        # ← удалённые файлы, всё ещё в памяти
             self._check_anon_exec_regions()      # ← reflective/memory-only injection
         return {
-            'name': 'Сканер native-библиотек (DLL)',
+            'name': 'Native Library Scanner (DLL)',
             'description': (
-                'AppInit_DLLs, IFEO, phantom-модули (удалённые файлы в памяти), '
-                'anonymous exec-страницы, подозрительные DLL/JAR в TEMP и AppData'
+                'AppInit_DLLs, IFEO, phantom modules (deleted files in memory), '
+                'anonymous exec pages, suspicious DLL/JAR in TEMP and AppData'
             ),
             'findings': self.findings,
             'risk': self.risk,
@@ -199,12 +199,12 @@ class NativeScanner:
         if order.get(level, 0) > order.get(self.risk, 0):
             self.risk = level
 
-    # ─── Фантомные модули ─────────────────────────────────────────────────────
+    # ─── Phantom modules ──────────────────────────────────────────────────────
 
     def _check_phantom_modules(self):
         """
-        Находит DLL, которые загружены в Java-процесс, но уже удалены с диска.
-        Типичная техника читов: загрузить DLL → удалить файл → никаких следов на диске.
+        Finds DLLs that are loaded into a Java process but already deleted from disk.
+        Typical cheat technique: load DLL → delete file → no traces on disk.
         """
         import psutil
         for proc in self._iter_java_procs():
@@ -217,7 +217,7 @@ class NativeScanner:
             for path in modules:
                 if not path:
                     continue
-                # Исключаем вспомогательные псевдо-пути (memory-mapped sections без файла)
+                # Exclude auxiliary pseudo-paths (memory-mapped sections without a file)
                 if path.startswith('\\') and not path.startswith('\\\\?\\'):
                     continue
                 p = Path(path)
@@ -230,7 +230,7 @@ class NativeScanner:
                         'level': 'danger',
                         'type': 'phantom_module',
                         'message': (
-                            f'Phantom-модуль: файл удалён с диска, но остаётся в памяти JVM '
+                            f'Phantom module: file deleted from disk but still in JVM memory '
                             f'(PID {pid})'
                         ),
                         'detail': str(path),
@@ -241,9 +241,9 @@ class NativeScanner:
 
     def _check_anon_exec_regions(self):
         """
-        Ищет большие исполняемые anonymous-регионы в Java-процессах.
-        JVM JIT создаёт много мелких регионов; крупный единый блок —
-        признак reflective DLL injection или memory-only чита.
+        Searches for large anonymous executable regions in Java processes.
+        JVM JIT creates many small regions; a large single block is
+        a sign of reflective DLL injection or a memory-only cheat.
         """
         import psutil
         for proc in self._iter_java_procs():
@@ -258,18 +258,18 @@ class NativeScanner:
                     'level': 'suspicious',
                     'type': 'anon_exec_memory',
                     'message': (
-                        f'Большой анонимный executable-регион в JVM (PID {pid}) — '
-                        f'возможен memory-only чит или reflective injection'
+                        f'Large anonymous executable region in JVM (PID {pid}) — '
+                        f'possible memory-only cheat or reflective injection'
                     ),
                     'detail': (
-                        f'Адрес: {r["base"]} | '
-                        f'Размер: {r["size_kb"]} КБ | '
-                        f'Защита: {r["protect"]}'
+                        f'Address: {r["base"]} | '
+                        f'Size: {r["size_kb"]} KB | '
+                        f'Protection: {r["protect"]}'
                     ),
                 })
                 self._set_risk('suspicious')
 
-    # ─── Реестр ───────────────────────────────────────────────────────────────
+    # ─── Registry ────────────────────────────────────────────────────────────
 
     def _check_appinit_dlls(self):
         if not WINREG_OK:
@@ -289,7 +289,7 @@ class NativeScanner:
                         self.findings.append({
                             'level': 'danger',
                             'type': 'appinit_dlls',
-                            'message': 'AppInit_DLLs — глобальная инъекция DLL во все процессы с user32.dll',
+                            'message': 'AppInit_DLLs — global DLL injection into all processes with user32.dll',
                             'detail': f'HKLM\\{subkey}\nAppInit_DLLs={value}',
                         })
                         self._set_risk('danger')
@@ -316,7 +316,7 @@ class NativeScanner:
                             self.findings.append({
                                 'level': 'danger',
                                 'type': 'ifeo_hijack',
-                                'message': f'IFEO-перехват запуска {target}',
+                                'message': f'IFEO hijack of {target} launch',
                                 'detail': f'Debugger={debugger}',
                             })
                             self._set_risk('danger')
@@ -330,7 +330,7 @@ class NativeScanner:
         except (OSError, FileNotFoundError):
             pass
 
-    # ─── Файловая система ─────────────────────────────────────────────────────
+    # ─── Filesystem ──────────────────────────────────────────────────────────
 
     def _scan_temp_for_executables(self):
         temp_dirs = [
