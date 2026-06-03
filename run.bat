@@ -41,6 +41,7 @@ if not defined PYTHON_EXE (
 "%PYTHON_EXE%" -c "import psutil" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [*] Installing dependencies...
+    "%PYTHON_EXE%" -m pip install --upgrade pip
     "%PYTHON_EXE%" -m pip install -r "%~dp0requirements.txt" --quiet
     if %errorlevel% neq 0 (
         echo [!] Failed to install dependencies.
