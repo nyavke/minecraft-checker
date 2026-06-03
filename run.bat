@@ -52,3 +52,8 @@ if %errorlevel% neq 0 (
 )
 cls
 "%PYTHON_EXE%" "%~dp0scan.py" %*
+if !errorlevel! neq 0 (
+    echo.
+    echo [!] scan.py exited with error !errorlevel!.
+    pause
+)
