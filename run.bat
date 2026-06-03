@@ -7,17 +7,24 @@ cd /d "%~dp0"
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
-    echo  [!] Python не найден. Начинаю загрузку...
+    echo  [!] Python не найден. Начинаю установку...
     echo.
 
-    :: Скачиваем установщик Python 3.13 через PowerShell
-    set PY_URL=https://www.python.org/ftp/python/3.13.3/python-3.13.3-amd64.exe
-    set PY_INSTALLER=%TEMP%\python-installer.exe
+    :: Сначала ищем установщик рядом с bat-файлом
+    set PY_INSTALLER=%~dp0python-3.13.9-amd64.exe
+    if exist "%PY_INSTALLER%" (
+        echo  [*] Найден локальный установщик: python-3.13.9-amd64.exe
+        goto :install_python
+    )
 
+    :: Если нет — скачиваем
+    set PY_URL=https://www.python.org/ftp/python/3.13.9/python-3.13.9-amd64.exe
+    set PY_INSTALLER=%TEMP%\python-3.13.9-amd64.exe
+
+    echo  [*] Скачивание Python 3.13.9 (~27 МБ)...
     powershell -NoProfile -Command ^
-        "Write-Host '  Скачивание Python 3.13.3...' -ForegroundColor Cyan; " ^
         "try { Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%PY_INSTALLER%' -UseBasicParsing } " ^
-        "catch { Write-Host '  Ошибка загрузки: ' $_.Exception.Message -ForegroundColor Red; exit 1 }"
+        "catch { Write-Host '  Ошибка: ' $_.Exception.Message -ForegroundColor Red; exit 1 }"
 
     if %errorlevel% neq 0 (
         echo.
@@ -28,33 +35,27 @@ if %errorlevel% neq 0 (
         exit /b 1
     )
 
-    echo.
+    :install_python
     echo  [*] Запуск установщика Python...
-    echo      - Установите для всех пользователей
-    echo      - Отметьте "Add Python to PATH"
-    echo.
-
-    :: Запускаем установщик (не тихо — чтобы пользователь мог выбрать путь и PATH)
     start /wait "" "%PY_INSTALLER%" /passive InstallAllUsers=1 PrependPath=1 Include_test=0
 
-    :: Удаляем установщик
-    del "%PY_INSTALLER%" >nul 2>&1
+    :: Удаляем только если качали во временную папку
+    if "%PY_INSTALLER%"=="%TEMP%\python-3.13.9-amd64.exe" (
+        del "%PY_INSTALLER%" >nul 2>&1
+    )
 
     :: Обновляем PATH в текущей сессии
     for /f "tokens=*" %%i in ('powershell -NoProfile -Command "[System.Environment]::GetEnvironmentVariable(\"Path\",\"Machine\")"') do set PATH=%%i;%PATH%
 
-    :: Проверяем снова
     python --version >nul 2>&1
     if %errorlevel% neq 0 (
         echo.
-        echo  [!] Python установлен, но требуется перезапуск.
-        echo      Закройте это окно и запустите run.bat снова.
+        echo  [!] Перезапустите run.bat — PATH обновится в новом окне.
         echo.
         pause
         exit /b 1
     )
 
-    echo.
     echo  [OK] Python установлен успешно!
     echo.
 )
@@ -65,7 +66,7 @@ if %errorlevel% neq 0 (
     echo  [*] Установка зависимостей...
     pip install -r requirements.txt --quiet
     if %errorlevel% neq 0 (
-        echo  [!] Ошибка установки зависимостей. Попробуйте запустить от имени администратора.
+        echo  [!] Ошибка установки зависимостей. Запустите от имени администратора.
         pause
         exit /b 1
     )
