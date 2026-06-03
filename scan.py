@@ -36,6 +36,9 @@ from detectors.artifacts         import ArtifactsScanner
 from detectors.shellbag          import ShellBagScanner
 from detectors.executedprograms  import ExecutedProgramsScanner
 from detectors.dns_cache         import DNSCacheScanner
+from detectors.nirsoft_executed  import ExecutedProgramsListScanner
+from detectors.nirsoft_recent    import RecentFilesViewScanner
+from detectors.nirsoft_usb       import USBDeviewScanner
 from report.generator       import ReportGenerator
 
 RESET  = '\033[0m'
@@ -217,6 +220,9 @@ def main():
         ('shellbag',        'ShellBag (folder history)',   ShellBagScanner),
         ('executedprograms','Executed Programs',           ExecutedProgramsScanner),
         ('dns_cache',       'DNS Cache',                   DNSCacheScanner),
+        ('exec_list',       'Executed Programs List',      ExecutedProgramsListScanner),
+        ('recent_files',    'Recent Files View',           RecentFilesViewScanner),
+        ('usb_history',     'USB History',                 USBDeviewScanner),
     ]
 
     results = {}
