@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
@@ -22,7 +23,7 @@ if not defined PYTHON_EXE (
     if not exist "%~dp0python-3.13.9-amd64.exe" (
         echo [*] Downloading Python 3.13.9...
         powershell -NoProfile -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.13.9/python-3.13.9-amd64.exe' -OutFile '%~dp0python-3.13.9-amd64.exe' -UseBasicParsing"
-        if %errorlevel% neq 0 (
+        if !errorlevel! neq 0 (
             echo [!] Download failed.
             pause
             exit /b 1
@@ -41,7 +42,7 @@ if not defined PYTHON_EXE (
 "%PYTHON_EXE%" -c "import psutil" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [*] Installing dependencies...
-    "%PYTHON_EXE%" -m pip install --upgrade pip
+    "%PYTHON_EXE%" -m pip install --upgrade pip --quiet
     "%PYTHON_EXE%" -m pip install -r "%~dp0requirements.txt" --quiet
     if %errorlevel% neq 0 (
         echo [!] Failed to install dependencies.
@@ -49,5 +50,5 @@ if %errorlevel% neq 0 (
         exit /b 1
     )
 )
-clear >nul 2>&1 || cls >nul 2>&1
+cls
 "%PYTHON_EXE%" "%~dp0scan.py" %*
