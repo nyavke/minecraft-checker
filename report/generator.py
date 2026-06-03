@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 
@@ -22,17 +23,35 @@ RISK_LABELS = {
     'unknown':    ('НЕИЗВЕСТНО', '#747d8c'),
 }
 
+_TS_RE = re.compile(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})')
+
+# Типы находок, которые означают фактический запуск чита
+_EXEC_TYPES = {
+    'bam_cheat_execution',
+    'prefetch_cheat_exe',
+    'prefetch_cheat_jar_path',
+    'userassist_cheat',
+    'appcompat_cheat',
+    'shimcache_cheat',
+}
+
 
 class ReportGenerator:
     def __init__(self, results: dict, username: str):
-        self.results = results
-        self.username = username
+        self.results   = results
+        self.username  = username
         self.scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     def generate(self) -> str:
-        overall_risk = self._calc_overall_risk()
-        sections_html = ''.join(self._render_section(name, data) for name, data in self.results.items())
-        summary_cards = self._render_summary_cards()
+        overall_risk  = self._calc_overall_risk()
+        timeline      = self._build_timeline()
+        last_run      = self._get_last_execution(timeline)
+        summary_cards = self._render_summary_cards(last_run)
+        timeline_html = self._render_timeline(timeline)
+        sections_html = ''.join(
+            self._render_section(name, data)
+            for name, data in self.results.items()
+        )
         risk_label, risk_color = RISK_LABELS.get(overall_risk, RISK_LABELS['unknown'])
 
         return f"""<!DOCTYPE html>
@@ -95,6 +114,7 @@ class ReportGenerator:
   }}
   .summary-card .card-label {{ color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }}
   .summary-card .card-value {{ font-size: 22px; font-weight: 700; }}
+  .summary-card .card-value.small {{ font-size: 13px; font-weight: 600; font-family: 'Consolas', monospace; }}
   .section {{
     background: var(--surface);
     border: 1px solid var(--border);
@@ -166,6 +186,42 @@ class ReportGenerator:
   .icon-clean     {{ background: rgba(46,213,115,0.2); color: #2ed573; }}
   .collapsed .section-body {{ display: none; }}
   .collapsed .chevron {{ transform: rotate(-90deg); }}
+  /* ── Timeline ─────────────────────────────────────────────── */
+  .timeline {{ position: relative; padding: 8px 0; }}
+  .timeline::before {{
+    content: '';
+    position: absolute;
+    left: 128px; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }}
+  .tl-item {{
+    display: flex;
+    align-items: flex-start;
+    padding: 7px 0;
+  }}
+  .tl-time {{
+    width: 112px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding-top: 3px;
+    flex-shrink: 0;
+    font-family: 'Consolas', monospace;
+    line-height: 1.4;
+  }}
+  .tl-dot {{
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin: 4px 16px 0;
+    position: relative;
+    z-index: 1;
+  }}
+  .tl-content {{ flex: 1; }}
+  .tl-msg {{ font-size: 13px; font-weight: 500; }}
+  .tl-src {{ font-size: 11px; color: var(--text-dim); margin-top: 1px; }}
   footer {{
     text-align: center;
     color: var(--text-dim);
@@ -190,6 +246,7 @@ class ReportGenerator:
   <div class="summary-grid">
     {summary_cards}
   </div>
+  {timeline_html}
   {sections_html}
 </div>
 
@@ -222,56 +279,146 @@ class ReportGenerator:
                 counts[level] += 1
         return counts
 
-    def _render_summary_cards(self):
+    def _render_summary_cards(self, last_run: str | None = None):
         total_danger = 0
         total_suspicious = 0
         total_info = 0
-        total_sections = len(self.results)
+        total_sections  = len(self.results)
         danger_sections = 0
 
         for data in self.results.values():
             findings = data.get('findings', [])
-            counts = self._count_by_level(findings)
-            total_danger += counts['danger']
+            counts   = self._count_by_level(findings)
+            total_danger     += counts['danger']
             total_suspicious += counts['suspicious']
-            total_info += counts['info']
+            total_info       += counts['info']
             if data.get('risk') == 'danger':
                 danger_sections += 1
 
         cards = [
-            ('Угрозы', str(total_danger), '#ff4757' if total_danger > 0 else '#2ed573'),
-            ('Подозрений', str(total_suspicious), '#ffa502' if total_suspicious > 0 else '#2ed573'),
-            ('Инфо', str(total_info), '#747d8c'),
-            ('Разделов', str(total_sections), '#58a6ff'),
-            ('Опасных', str(danger_sections), '#ff4757' if danger_sections > 0 else '#2ed573'),
+            ('Угрозы',     str(total_danger),    '#ff4757' if total_danger     > 0 else '#2ed573', False),
+            ('Подозрений', str(total_suspicious), '#ffa502' if total_suspicious > 0 else '#2ed573', False),
+            ('Инфо',       str(total_info),       '#747d8c', False),
+            ('Разделов',   str(total_sections),   '#58a6ff', False),
+            ('Опасных',    str(danger_sections),  '#ff4757' if danger_sections  > 0 else '#2ed573', False),
         ]
+        if last_run:
+            cards.append(('Последний запуск', last_run[:16], '#ff4757', True))
 
         html = ''
-        for label, value, color in cards:
+        for label, value, color, small in cards:
+            size_cls = ' small' if small else ''
             html += f'''<div class="summary-card">
   <div class="card-label">{label}</div>
-  <div class="card-value" style="color:{color}">{value}</div>
+  <div class="card-value{size_cls}" style="color:{color}">{value}</div>
 </div>'''
         return html
 
+    # ── Timeline ──────────────────────────────────────────────────────────────
+
+    def _build_timeline(self) -> list:
+        events = []
+        for scanner_key, data in self.results.items():
+            scanner_name = data.get('name', scanner_key)
+            for finding in data.get('findings', []):
+                if finding.get('level') not in ('danger', 'suspicious'):
+                    continue
+                detail = finding.get('detail', '')
+                m = _TS_RE.search(detail)
+                if not m:
+                    continue
+                ts_str = m.group(1)
+                try:
+                    dt = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    continue
+                events.append({
+                    'dt':      dt,
+                    'dt_str':  ts_str,
+                    'message': finding.get('message', ''),
+                    'level':   finding.get('level', 'info'),
+                    'scanner': scanner_name,
+                    'ftype':   finding.get('type', ''),
+                })
+        events.sort(key=lambda e: e['dt'], reverse=True)
+        return events
+
+    def _get_last_execution(self, events: list) -> str | None:
+        for e in events:
+            if e['ftype'] in _EXEC_TYPES:
+                return e['dt_str']
+        return None
+
+    def _render_timeline(self, events: list) -> str:
+        if not events:
+            return ''
+
+        dot_colors = {'danger': '#ff4757', 'suspicious': '#ffa502'}
+        items_html = ''
+        for e in events:
+            color = dot_colors.get(e['level'], '#747d8c')
+            msg = (e['message']
+                   .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+            src = (e['scanner']
+                   .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+            # Разбиваем timestamp на дату и время для двустрочного отображения
+            ts_parts = e['dt_str'][:16].split(' ')
+            ts_html  = f"{ts_parts[0]}<br><b>{ts_parts[1]}</b>" if len(ts_parts) == 2 else e['dt_str'][:16]
+            items_html += f'''    <div class="tl-item">
+      <div class="tl-time">{ts_html}</div>
+      <div class="tl-dot" style="background:{color};box-shadow:0 0 5px {color}99"></div>
+      <div class="tl-content">
+        <div class="tl-msg">{msg}</div>
+        <div class="tl-src">{src}</div>
+      </div>
+    </div>\n'''
+
+        count     = len(events)
+        badge_cls = 'tag-danger' if any(e['level'] == 'danger' for e in events) else 'tag-suspicious'
+
+        return f'''<div class="section">
+  <div class="section-header">
+    <div>
+      <div class="section-title">&#128197; Хронология событий</div>
+      <div class="section-desc">Все находки с временными метками — от новых к старым</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="section-badge {badge_cls}">{count} событий</span>
+      <span class="chevron">&#9660;</span>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="timeline">
+{items_html}    </div>
+  </div>
+</div>'''
+
+    # ── Sections ──────────────────────────────────────────────────────────────
+
     def _render_section(self, key, data):
-        name = data.get('name', key)
-        desc = data.get('description', '')
+        name     = data.get('name', key)
+        desc     = data.get('description', '')
         findings = data.get('findings', [])
-        risk = data.get('risk', 'unknown')
-        error = data.get('error')
+        risk     = data.get('risk', 'unknown')
+        error    = data.get('error')
 
         risk_label, risk_color = RISK_LABELS.get(risk, RISK_LABELS['unknown'])
         badge_class = f'tag-{risk}' if risk in LEVEL_COLORS else 'tag-info'
 
-        findings_html = ''
         if error:
-            findings_html = f'<div class="finding"><div class="finding-icon icon-info">!</div><div class="finding-content"><div class="finding-msg">Ошибка сканера</div><div class="finding-detail">{error}</div></div></div>'
+            findings_html = (
+                f'<div class="finding"><div class="finding-icon icon-info">!</div>'
+                f'<div class="finding-content"><div class="finding-msg">Ошибка сканера</div>'
+                f'<div class="finding-detail">{error}</div></div></div>'
+            )
         elif not findings:
-            findings_html = '<div class="finding"><div class="finding-icon icon-clean">&#10003;</div><div class="finding-content"><div class="finding-msg" style="color:var(--text-dim)">Находок нет</div></div></div>'
+            findings_html = (
+                '<div class="finding"><div class="finding-icon icon-clean">&#10003;</div>'
+                '<div class="finding-content"><div class="finding-msg" '
+                'style="color:var(--text-dim)">Находок нет</div></div></div>'
+            )
         else:
-            for f in findings:
-                findings_html += self._render_finding(f)
+            findings_html = ''.join(self._render_finding(f) for f in findings)
 
         collapsed_class = '' if risk in ('danger', 'suspicious') else 'collapsed'
 
@@ -292,15 +439,15 @@ class ReportGenerator:
 </div>'''
 
     def _render_finding(self, f):
-        level = f.get('level', 'info')
-        msg = f.get('message', '')
-        detail = f.get('detail', '')
-        icon_html = LEVEL_ICONS.get(level, '&#8505;')
+        level      = f.get('level', 'info')
+        msg        = f.get('message', '')
+        detail     = f.get('detail', '')
+        icon_html  = LEVEL_ICONS.get(level, '&#8505;')
         icon_class = f'icon-{level}'
 
         detail_html = ''
         if detail:
-            escaped = detail.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            escaped     = detail.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             detail_html = f'<div class="finding-detail">{escaped}</div>'
 
         return f'''<div class="finding">

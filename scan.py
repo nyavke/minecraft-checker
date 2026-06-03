@@ -35,6 +35,7 @@ from detectors.strings_scan import StringsScanner
 from detectors.artifacts         import ArtifactsScanner
 from detectors.shellbag          import ShellBagScanner
 from detectors.executedprograms  import ExecutedProgramsScanner
+from detectors.dns_cache         import DNSCacheScanner
 from report.generator       import ReportGenerator
 
 RESET  = '\033[0m'
@@ -74,23 +75,13 @@ def is_admin():
 
 
 def elevate_and_restart():
-    """
-    Перезапустить скрипт с правами администратора через UAC.
-    Возвращает True если UAC-запрос был показан (пользователь нажал Да или Нет).
-    """
     script = str(Path(__file__).resolve())
-    # Пробрасываем все аргументы командной строки в поднятый процесс
-    extra = ' '.join(f'"{a}"' for a in sys.argv[1:])
+    extra  = ' '.join(f'"{a}"' for a in sys.argv[1:])
     params = f'"{script}" {extra}'.strip()
     ret = ctypes.windll.shell32.ShellExecuteW(
-        None,           # hwnd
-        "runas",        # verb — вызывает UAC
-        sys.executable, # python.exe
-        params,         # аргументы
-        None,           # рабочая директория
-        1,              # SW_SHOWNORMAL
+        None, 'runas', sys.executable, params, None, 1
     )
-    return int(ret) > 32  # >32 = успех
+    return int(ret) > 32
 
 
 def banner():
@@ -205,8 +196,7 @@ def main():
         print(f'{YELLOW}[*] Requesting administrator privileges (UAC)...{RESET}')
         if elevate_and_restart():
             sys.exit(0)
-        else:
-            print(f'{YELLOW}[!] UAC denied. Some checks (Prefetch, BAM, memory) will be limited.{RESET}\n')
+        print(f'{YELLOW}[!] UAC denied. Prefetch, BAM, memory checks will be limited.{RESET}\n')
 
     banner()
 
@@ -226,6 +216,7 @@ def main():
         ('artifacts',       'Forensic Artifacts',          ArtifactsScanner),
         ('shellbag',        'ShellBag (folder history)',   ShellBagScanner),
         ('executedprograms','Executed Programs',           ExecutedProgramsScanner),
+        ('dns_cache',       'DNS Cache',                   DNSCacheScanner),
     ]
 
     results = {}

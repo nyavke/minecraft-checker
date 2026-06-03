@@ -158,7 +158,7 @@ class ExecutedProgramsScanner:
                     self.findings.append({
                         'level': 'danger',
                         'type': 'prefetch_cheat_exe',
-                        'message': f'Prefetch: чит запускался как EXE — {pf.stem}',
+                        'message': f'Prefetch: {pf.stem}',
                         'detail': f'Последний запуск: {mtime} | {pf}',
                     })
                     self._set_risk('danger')
