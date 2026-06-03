@@ -16,7 +16,7 @@ try:
 except ImportError:
     WINREG_OK = False
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
+with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
     SIGS = json.load(f)
 
 ALL_CHEAT_PATTERNS = (

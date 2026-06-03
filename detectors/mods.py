@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
+with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
     SIGS = json.load(f)
 
 

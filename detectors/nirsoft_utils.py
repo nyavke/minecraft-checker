@@ -8,7 +8,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
+with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
     _SIGS = json.load(f)
 
 _PATTERNS = [p.lower() for p in _SIGS['process_names'] + _SIGS['mod_name_patterns']]

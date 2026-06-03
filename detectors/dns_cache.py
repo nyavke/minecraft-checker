@@ -8,7 +8,7 @@ import re
 import json
 from pathlib import Path
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json') as f:
+with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
     _SIGS = json.load(f)
 
 # Известные домены читерских клиентов — только без пути (убираем vk.com/group)
