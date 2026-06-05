@@ -12,7 +12,7 @@ import re
 import struct
 import json
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta  # noqa: F401 — timedelta used in _filetime_to_str
 
 try:
     import winreg
@@ -66,7 +66,8 @@ def _extract_paths_from_shimcache(data: bytes) -> list[str]:
 def _filetime_to_str(ft: int) -> str:
     try:
         ts = ft / 10_000_000 - 11_644_473_600
-        return datetime(1970, 1, 1, tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=ts)
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
     except Exception:
         return '?'
 

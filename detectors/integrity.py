@@ -18,7 +18,6 @@ MOJANG_HASHES = {
     '1.20.1': 'a677c82a501a2a88b8d6d7e09f23d60c75f5cf71',
     '1.20.4': '5eecd95eb71cae90b96da76a5f91b0cfe5e4e8a5',
     '1.21':   '067a6a98d01a7038be3d0ed1e671dca5c5f64e70',
-    '1.21.1': '3c7a3e69a4c7e3c3e3d5a5b5c5d5e5f5a5b5c5da',
 }
 
 
