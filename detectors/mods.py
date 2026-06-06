@@ -3,9 +3,10 @@ import re
 import json
 import zipfile
 from pathlib import Path
+from detectors._resources import resource_path
 
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
+with open(resource_path('signatures/cheats.json'), encoding='utf-8') as f:
     SIGS = json.load(f)
 
 
