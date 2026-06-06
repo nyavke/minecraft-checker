@@ -139,6 +139,8 @@ class ModScanner:
                 self._set_risk('danger')
                 return
 
+        self._check_jar_size(jar_path)
+
         try:
             with zipfile.ZipFile(jar_path, 'r') as zf:
                 names = zf.namelist()
@@ -157,6 +159,24 @@ class ModScanner:
                 'type': 'jar_read_error',
                 'message': f'Failed to read JAR: {jar_path.name}',
                 'detail': str(e),
+            })
+            self._set_risk('suspicious')
+
+    def _check_jar_size(self, jar_path):
+        cheat_sizes = SIGS.get('cheat_jar_sizes_kb', {})
+        if not cheat_sizes:
+            return
+        try:
+            size_kb = str(jar_path.stat().st_size // 1024)
+        except OSError:
+            return
+        if size_kb in cheat_sizes:
+            cheat_name = cheat_sizes[size_kb]
+            self.findings.append({
+                'level': 'suspicious',
+                'type': 'suspicious_jar_size',
+                'message': f'Размер JAR ({size_kb} КБ) совпадает с известным читом: {jar_path.name}',
+                'detail': f'Известные читы такого размера: {cheat_name} | Путь: {jar_path}',
             })
             self._set_risk('suspicious')
 
