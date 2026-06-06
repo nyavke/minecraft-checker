@@ -30,7 +30,9 @@ try:
 except ImportError:
     WINREG_OK = False
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
+from detectors._resources import resource_path
+
+with open(resource_path('signatures/cheats.json'), encoding='utf-8') as f:
     SIGS = json.load(f)
 
 # Объединённый список паттернов для поиска
