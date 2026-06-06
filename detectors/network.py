@@ -2,6 +2,7 @@ import json
 import subprocess
 import threading
 from pathlib import Path
+from detectors._resources import resource_path
 
 try:
     import psutil
@@ -9,7 +10,7 @@ try:
 except ImportError:
     PSUTIL_OK = False
 
-with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding='utf-8') as f:
+with open(resource_path('signatures/cheats.json'), encoding='utf-8') as f:
     SIGS = json.load(f)
 
 JDWP_PORTS = {5005, 8000, 9009}
