@@ -22,6 +22,9 @@ with open(Path(__file__).parent.parent / 'signatures' / 'cheats.json', encoding=
 SUSPICIOUS_DLL_KEYWORDS = [
     'inject', 'hook', 'hack', 'cheat', 'bypass', 'loader',
     'preload', 'patch', 'payload', 'killa', 'aura', 'aimbot',
+    'cortex', 'vape4', 'nursultan', 'neverhook', 'gishcode',
+    'troxill', 'vertzah', 'airatium', 'fmt32', 'fmt64',
+    'easycheat', 'topkaautobuy', 'lunaroptimize', 'dauntiblyat',
 ]
 
 # ─── Windows API ──────────────────────────────────────────────────────────────
