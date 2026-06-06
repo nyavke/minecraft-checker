@@ -3,10 +3,10 @@ USBDeview scanner — история подключённых USB устройс
 Ловит USB-носители с именами читов и устройства, подключавшиеся в момент установки чита.
 """
 
-from pathlib import Path
+from detectors._resources import resource_path
 from .nirsoft_utils import contains_cheat, norm_dt, run_nirsoft
 
-_TOOL = str(Path(__file__).parent.parent / 'usbdeview-x64' / 'USBDeview.exe')
+_TOOL = str(resource_path('usbdeview-x64/USBDeview.exe'))
 
 
 class USBDeviewScanner:
