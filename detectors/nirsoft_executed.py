@@ -3,10 +3,10 @@ ExecutedProgramsList scanner — история запусков через NirS
 Покрывает ShimCache, UserAssist, Prefetch, BAM одновременно.
 """
 
-from pathlib import Path
+from detectors._resources import resource_path
 from .nirsoft_utils import contains_cheat, find_timestamp, run_nirsoft
 
-_TOOL = str(Path(__file__).parent.parent / 'executedprogramslist' / 'ExecutedProgramsList.exe')
+_TOOL = str(resource_path('executedprogramslist/ExecutedProgramsList.exe'))
 
 
 class ExecutedProgramsListScanner:
